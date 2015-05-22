@@ -3,6 +3,7 @@ This module provides utility functions for the Scan Op
 
 See scan.py for details on scan
 """
+from __future__ import print_function
 __docformat__ = 'restructedtext en'
 __authors__ = ("Razvan Pascanu "
                "Frederic Bastien "
@@ -24,7 +25,6 @@ import theano
 from theano.compile.pfunc import rebuild_collect_shared
 from theano import gof
 from theano import tensor, scalar
-from theano.compat.python2x import all
 from theano.tensor.basic import get_scalar_constant_value
 
 
@@ -244,7 +244,7 @@ def canonical_arguments(sequences,
                     if maxtap > 0:
                         ed = - (maxtap + offset_min - st)
                     else:
-                        ed = - (offset_min -st)
+                        ed = - (offset_min - st)
                     if ed != 0:
                         nw_input = nw_input[st:ed]
                     else:
@@ -418,7 +418,7 @@ class ScanPermutation(gof.Op):
             pos = index % membuffer.shape[0]
             if outputs[0] is membuffer:
                 membuffer = membuffer.copy()
-            print pos
+            print(pos)
             out[0][:membuffer.shape[0] - pos] = membuffer[pos:]
             out[0][membuffer.shape[0] - pos:] = membuffer[:pos]
 

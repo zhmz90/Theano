@@ -1,9 +1,9 @@
 """Generate and compile C modules for Python,
 """
+from __future__ import print_function
 import atexit
 import cPickle
 import logging
-import operator
 import os
 import re
 import shutil
@@ -24,12 +24,12 @@ except ImportError:
 import numpy.distutils  # TODO: TensorType should handle this
 
 import theano
-from theano.compat import any, PY3, next, decode, decode_iter
+from theano.compat import PY3, decode, decode_iter
 from theano.compat.six import b, BytesIO, StringIO
 from theano.gof.utils import flatten
 from theano.configparser import config
 from theano.gof.cc import hash_from_code
-from theano.misc.windows import (subprocess_Popen, call_subprocess_Popen,
+from theano.misc.windows import (subprocess_Popen,
                                  output_subprocess_Popen)
 
 # we will abuse the lockfile mechanism when reading and writing the registry
@@ -92,7 +92,7 @@ def debug_counter(name, every=1):
     setattr(debug_counter, name, getattr(debug_counter, name, 0) + 1)
     n = getattr(debug_counter, name)
     if n % every == 0:
-        print >>sys.stderr, "debug_counter [%s]: %s" % (name, n)
+        print("debug_counter [%s]: %s" % (name, n), file=sys.stderr)
 
 
 class ExtFunction(object):
@@ -153,15 +153,15 @@ class DynamicModule(object):
         self.init_blocks = []
 
     def print_methoddef(self, stream):
-        print >> stream, "static PyMethodDef MyMethods[] = {"
+        print("static PyMethodDef MyMethods[] = {", file=stream)
         for f in self.functions:
-            print >> stream, f.method_decl(), ','
-        print >> stream, "\t{NULL, NULL, 0, NULL}"
-        print >> stream, "};"
+            print(f.method_decl(), ',', file=stream)
+        print("\t{NULL, NULL, 0, NULL}", file=stream)
+        print("};", file=stream)
 
     def print_init(self, stream):
         if PY3:
-            print >> stream, """\
+            print("""\
 static struct PyModuleDef moduledef = {{
       PyModuleDef_HEAD_INIT,
       "{name}",
@@ -169,21 +169,21 @@ static struct PyModuleDef moduledef = {{
       -1,
       MyMethods,
 }};
-""".format(name=self.hash_placeholder)
-            print >> stream, ("PyMODINIT_FUNC PyInit_%s(void) {" %
-                              self.hash_placeholder)
+""".format(name=self.hash_placeholder), file=stream)
+            print(("PyMODINIT_FUNC PyInit_%s(void) {" %
+                              self.hash_placeholder), file=stream)
             for block in self.init_blocks:
-                print >> stream, '  ', block
-            print >> stream, "    PyObject *m = PyModule_Create(&moduledef);"
-            print >> stream, "    return m;"
+                print('  ', block, file=stream)
+            print("    PyObject *m = PyModule_Create(&moduledef);", file=stream)
+            print("    return m;", file=stream)
         else:
-            print >> stream, ("PyMODINIT_FUNC init%s(void){" %
-                              self.hash_placeholder)
+            print(("PyMODINIT_FUNC init%s(void){" %
+                              self.hash_placeholder), file=stream)
             for block in self.init_blocks:
-                print >> stream, '  ', block
-            print >> stream, '  ', ('(void) Py_InitModule("%s", MyMethods);'
-                                    % self.hash_placeholder)
-        print >> stream, "}"
+                print('  ', block, file=stream)
+            print('  ', ('(void) Py_InitModule("%s", MyMethods);'
+                                    % self.hash_placeholder), file=stream)
+        print("}", file=stream)
 
     def add_include(self, str):
         assert not self.finalized
@@ -208,25 +208,25 @@ static struct PyModuleDef moduledef = {{
             if not inc:
                 continue
             if inc[0] == '<' or inc[0] == '"':
-                print >> sio, "#include", inc
+                print("#include", inc, file=sio)
             else:
-                print >> sio, '#include "%s"' % inc
+                print('#include "%s"' % inc, file=sio)
 
-        print >> sio, "//////////////////////"
-        print >> sio, "////  Support Code"
-        print >> sio, "//////////////////////"
+        print("//////////////////////", file=sio)
+        print("////  Support Code", file=sio)
+        print("//////////////////////", file=sio)
         for sc in self.support_code:
-            print >> sio, sc
+            print(sc, file=sio)
 
-        print >> sio, "//////////////////////"
-        print >> sio, "////  Functions"
-        print >> sio, "//////////////////////"
+        print("//////////////////////", file=sio)
+        print("////  Functions", file=sio)
+        print("//////////////////////", file=sio)
         for f in self.functions:
-            print >> sio, f.code_block
+            print(f.code_block, file=sio)
 
-        print >> sio, "//////////////////////"
-        print >> sio, "////  Module init"
-        print >> sio, "//////////////////////"
+        print("//////////////////////", file=sio)
+        print("////  Module init", file=sio)
+        print("//////////////////////", file=sio)
         self.print_methoddef(sio)
         self.print_init(sio)
 
@@ -242,10 +242,10 @@ static struct PyModuleDef moduledef = {{
     def list_code(self, ofile=sys.stdout):
         """Print out the code with line numbers to `ofile` """
         for i, line in enumerate(self.code().split('\n')):
-            print >> ofile, ('%4i' % (i + 1)), line
+            print(('%4i' % (i + 1)), line, file=ofile)
         ofile.flush()
 
-    #TODO: add_type
+    # TODO: add_type
 
 
 def dlimport(fullpath, suffix=None):
@@ -359,7 +359,6 @@ def is_same_entry(entry_1, entry_2):
 
 
 def get_module_hash(src_code, key):
-
     """
     Return an MD5 hash that uniquely identifies a module.
 
@@ -636,7 +635,8 @@ class ModuleCache(object):
             self.stats[0] += 1
         return self.module_from_name[name]
 
-    def refresh(self, age_thresh_use=None, delete_if_problem=False, cleanup=True):
+    def refresh(self, age_thresh_use=None, delete_if_problem=False,
+                cleanup=True):
         """Update cache data by walking the cache directory structure.
 
         Load key.pkl files that have not been loaded yet.
@@ -692,7 +692,7 @@ class ModuleCache(object):
             files = os.listdir(root)
             if not files:
                 rmtree_empty(root, ignore_nocleanup=True,
-                       msg="empty dir")
+                             msg="empty dir")
                 continue
             if 'delete.me' in files:
                 rmtree(root, ignore_nocleanup=True,
@@ -845,14 +845,15 @@ class ModuleCache(object):
                                     get_safe_part(key),
                                     []).append(key)
                         else:
+                            dir1 = os.path.dirname(self.entry_from_key[key])
+                            dir2 = os.path.dirname(entry)
                             _logger.warning(
                                 "The same cache key is associated to "
                                 "different modules (%s and %s). This "
                                 "is not supposed to happen! You may "
                                 "need to manually delete your cache "
                                 "directory to fix this.",
-                                self.entry_from_key[key],
-                                entry)
+                                dir1, dir2)
                     # Clean up the name space to prevent bug.
                     if key_data.keys:
                         del key
@@ -959,9 +960,12 @@ class ModuleCache(object):
                 except cPickle.PicklingError:
                     key_data.remove_key(key)
                     key_broken = True
-            if (key[0] and not key_broken and
-                self.check_for_broken_eq):
-                self.check_key(key, key_data.key_pkl)
+                # We need the lock while we check in case of parallel
+                # process that could be changing the file at the same
+                # time.
+                if (key[0] and not key_broken and
+                    self.check_for_broken_eq):
+                    self.check_key(key, key_data.key_pkl)
             self._update_mappings(key, key_data, module.__file__, check_in_keys=not key_broken)
             return module
         else:
@@ -1046,8 +1050,6 @@ class ModuleCache(object):
         if module is not None:
             return module
 
-        lock_taken = False
-
         src_code = lnk.get_src_code()
         # Is the source code already in the cache?
         module_hash = get_module_hash(src_code, key)
@@ -1056,8 +1058,20 @@ class ModuleCache(object):
             return module
 
         with compilelock.lock_ctx(keep_lock=keep_lock):
-            # Maybe somebody else compiled it for us while we
-            # where waiting for the lock. Try to load it again
+            # 1) Maybe somebody else compiled it for us while we
+            #    where waiting for the lock. Try to load it again.
+            # 2) If other repo that import Theano have Theano ops defined,
+            #    we need to refresh the cache here. Otherwise, there are import
+            #    order problems.
+            #    When device=gpu, we compile during Theano
+            #    import. This triggers the loading of the cache. But
+            #    unpickling the cache asks that the external Ops are
+            #    completly loaded, which isn't always the case!
+            #    If a module isn't completly loaded and its unpickling
+            #    fails, it means it is safe for this function
+            #    compilation to skip them, but not for future
+            #    compilations. So reloading the cache here
+            #    compilation fixes this problem. (we could do that only once)
             self.refresh(cleanup=False)
 
             module = self._get_from_key(key)
@@ -1079,7 +1093,7 @@ class ModuleCache(object):
                 assert name not in self.module_from_name
                 self.module_from_name[name] = module
                 nocleanup = True
-            except OSError, e:
+            except OSError as e:
                 _logger.error(e)
                 if e.errno == 31:
                     _logger.error('There are %i files in %s',
@@ -1112,8 +1126,20 @@ class ModuleCache(object):
         # Verify that when we reload the KeyData from the pickled file, the
         # same key can be found in it, and is not equal to more than one
         # other key.
-        with open(key_pkl, 'rb') as f:
-            key_data = cPickle.load(f)
+        for i in range(3):
+            try:
+                with open(key_pkl, 'rb') as f:
+                    key_data = cPickle.load(f)
+                break
+            except EOFError:
+                # This file is probably getting written/updated at the
+                # same time.  This can happen as we read the cache
+                # without taking the lock.
+                if i == 2:
+                    with compilelock.lock_ctx():
+                        with open(key_pkl, 'rb') as f:
+                            key_data = cPickle.load(f)
+                time.sleep(2)
 
         found = sum(key == other_key for other_key in key_data.keys)
         msg = ''
@@ -1363,7 +1389,7 @@ def _rmtree(parent, ignore_nocleanup=False, msg='', level=logging.DEBUG,
                 log_msg += ' (%s)' % msg
             _logger.log(level, '%s: %s', log_msg, parent)
             shutil.rmtree(parent)
-    except Exception, e:
+    except Exception as e:
         # If parent still exists, mark it for deletion by a future refresh()
         _logger.debug('In _rmtree, encountered exception: %s(%s)',
                       type(e), e)
@@ -1371,7 +1397,7 @@ def _rmtree(parent, ignore_nocleanup=False, msg='', level=logging.DEBUG,
             try:
                 _logger.info('placing "delete.me" in %s', parent)
                 open(os.path.join(parent, 'delete.me'), 'w').close()
-            except Exception, ee:
+            except Exception as ee:
                 _logger.warning("Failed to remove or mark cache directory %s "
                                 "for removal %s", parent, ee)
 
@@ -1446,22 +1472,22 @@ def std_lib_dirs_and_libs():
             # available, and the *.a files have to be found earlier than
             # the other ones.
 
-            #When Canopy is installed for the user:
-            #sys.prefix:C:\Users\username\AppData\Local\Enthought\Canopy\User
-            #sys.base_prefix:C:\Users\username\AppData\Local\Enthought\Canopy\App\appdata\canopy-1.1.0.1371.win-x86_64
-            #When Canopy is installed for all users:
-            #sys.base_prefix: C:\Program Files\Enthought\Canopy\App\appdata\canopy-1.1.0.1371.win-x86_64
-            #sys.prefix: C:\Users\username\AppData\Local\Enthought\Canopy\User
-            #So we need to use sys.prefix as it support both cases.
-            #sys.base_prefix support only one case
+            # When Canopy is installed for the user:
+            # sys.prefix:C:\Users\username\AppData\Local\Enthought\Canopy\User
+            # sys.base_prefix:C:\Users\username\AppData\Local\Enthought\Canopy\App\appdata\canopy-1.1.0.1371.win-x86_64
+            # When Canopy is installed for all users:
+            # sys.base_prefix: C:\Program Files\Enthought\Canopy\App\appdata\canopy-1.1.0.1371.win-x86_64
+            # sys.prefix: C:\Users\username\AppData\Local\Enthought\Canopy\User
+            # So we need to use sys.prefix as it support both cases.
+            # sys.base_prefix support only one case
             libdir = os.path.join(sys.prefix, 'libs')
 
             for f, lib in [('libpython27.a', 'libpython 1.2')]:
                 if not os.path.exists(os.path.join(libdir, f)):
-                    print ("Your Python version is from Canopy. " +
+                    print(("Your Python version is from Canopy. " +
                            "You need to install the package '" + lib +
                            "' from Canopy package manager."
-                           )
+                           ))
             libdirs = [
                 # Used in older Canopy
                 os.path.join(sys.prefix, 'libs'),
@@ -1470,12 +1496,12 @@ def std_lib_dirs_and_libs():
                              r'EGG-INFO\mingw\usr\x86_64-w64-mingw32\lib')]
             for f, lib in [('libmsvcr90.a',
                             'mingw 4.5.2 or 4.8.1-2 (newer could work)')]:
-                if not any([os.path.exists(os.path.join(libdir, f))
-                            for libdir in libdirs]):
-                    print ("Your Python version is from Canopy. " +
+                if not any([os.path.exists(os.path.join(tmp_libdir, f))
+                            for tmp_libdir in libdirs]):
+                    print(("Your Python version is from Canopy. " +
                            "You need to install the package '" + lib +
                            "' from Canopy package manager."
-                           )
+                           ))
             python_lib_dirs.insert(0, libdir)
         std_lib_dirs_and_libs.data = [libname], python_lib_dirs
 
@@ -1526,7 +1552,104 @@ def gcc_llvm():
 gcc_llvm.is_llvm = None
 
 
-class GCC_compiler(object):
+class Compiler(object):
+    """
+    Meta compiler that offer some generic function
+    """
+    @staticmethod
+    def _try_compile_tmp(src_code, tmp_prefix='', flags=(),
+                         try_run=False, output=False, compiler=None):
+        """Try to compile (and run) a test program.
+
+        This is useful in various occasions, to check if libraries
+        or compilers are behaving as expected.
+
+        If try_run is True, the src_code is assumed to be executable,
+        and will be run.
+
+        If try_run is False, returns the compilation status.
+        If try_run is True, returns a (compile_status, run_status) pair.
+        If output is there, we append the stdout and stderr to the output.
+        """
+        if not compiler:
+            return False
+
+        flags = list(flags)
+        compilation_ok = True
+        run_ok = False
+        out, err = None, None
+        try:
+            fd, path = tempfile.mkstemp(suffix='.c', prefix=tmp_prefix)
+            exe_path = path[:-2]
+            try:
+                # Python3 compatibility: try to cast Py3 strings as Py2 strings
+                try:
+                    src_code = b(src_code)
+                except Exception:
+                    pass
+                os.write(fd, src_code)
+                os.close(fd)
+                fd = None
+                out, err, p_ret = output_subprocess_Popen(
+                    [compiler, path, '-o', exe_path] + flags)
+                if p_ret != 0:
+                    compilation_ok = False
+                elif try_run:
+                    out, err, p_ret = output_subprocess_Popen([exe_path])
+                    run_ok = (p_ret == 0)
+            finally:
+                try:
+                    if fd is not None:
+                        os.close(fd)
+                finally:
+                    if os.path.exists(path):
+                        os.remove(path)
+                    if os.path.exists(exe_path):
+                        os.remove(exe_path)
+                    if os.path.exists(exe_path + ".exe"):
+                        os.remove(exe_path + ".exe")
+        except OSError as e:
+            if err is None:
+                err = str(e)
+            else:
+                err += "\n" + str(e)
+            compilation_ok = False
+
+        if not try_run and not output:
+            return compilation_ok
+        elif not try_run and output:
+            return (compilation_ok, out, err)
+        elif not output:
+            return (compilation_ok, run_ok)
+        else:
+            return (compilation_ok, run_ok, out, err)
+
+    @staticmethod
+    def _try_flags(flag_list, preambule="", body="",
+                   try_run=False, output=False, compiler=None):
+        '''
+        Try to compile a dummy file with these flags.
+
+        Returns True if compilation was successful, False if there
+        were errors.
+        '''
+        if not compiler:
+            return False
+
+        code = b("""
+        %(preambule)s
+        int main(int argc, char** argv)
+        {
+            %(body)s
+            return 0;
+        }
+        """ % locals())
+        return Compiler._try_compile_tmp(code, tmp_prefix='try_flags_',
+                                         flags=flag_list, try_run=try_run,
+                                         output=output, compiler=compiler)
+
+
+class GCC_compiler(Compiler):
     # The equivalent flags of --march=native used by g++.
     march_flags = None
 
@@ -1549,7 +1672,7 @@ class GCC_compiler(object):
         detect_march = GCC_compiler.march_flags is None
         if detect_march:
             for f in cxxflags:
-                #If the user give an -march=X parameter, don't add one ourself
+                # If the user give an -march=X parameter, don't add one ourself
                 if ((f.startswith("--march=") or f.startswith("-march="))):
                     _logger.warn(
                         "WARNING: your Theano flags `gcc.cxxflags` specify"
@@ -1736,14 +1859,14 @@ class GCC_compiler(object):
                     _logger.info("g++ -march=native equivalent flags: %s",
                                  GCC_compiler.march_flags)
 
-        #Add the detected -march=native equivalent flags
+        # Add the detected -march=native equivalent flags
         if GCC_compiler.march_flags:
             cxxflags.extend(GCC_compiler.march_flags)
 
-        #NumPy 1.7 Deprecate the old API. I updated most of the places
-        #to use the new API, but not everywhere. When finished, enable
-        #the following macro to assert that we don't bring new code
-        #that use the old API.
+        # NumPy 1.7 Deprecate the old API. I updated most of the places
+        # to use the new API, but not everywhere. When finished, enable
+        # the following macro to assert that we don't bring new code
+        # that use the old API.
         cxxflags.append("-D NPY_NO_DEPRECATED_API=NPY_1_7_API_VERSION")
         numpy_ver = [int(n) for n in numpy.__version__.split('.')[:2]]
 
@@ -1791,86 +1914,15 @@ class GCC_compiler(object):
     @staticmethod
     def try_compile_tmp(src_code, tmp_prefix='', flags=(),
                         try_run=False, output=False):
-        """Try to compile (and run) a test program.
-
-        This is useful in various occasions, to check if libraries
-        or compilers are behaving as expected.
-
-        If try_run is True, the src_code is assumed to be executable,
-        and will be run.
-
-        If try_run is False, returns the compilation status.
-        If try_run is True, returns a (compile_status, run_status) pair.
-        If output is there, we append the stdout and stderr to the output.
-        """
-        if not theano.config.cxx:
-            return False
-
-        flags = list(flags)
-        compilation_ok = True
-        run_ok = False
-        out, err = None, None
-        try:
-            fd, path = tempfile.mkstemp(suffix='.c', prefix=tmp_prefix)
-            exe_path = path[:-2]
-            try:
-                # Python3 compatibility: try to cast Py3 strings as Py2 strings
-                try:
-                    src_code = b(src_code)
-                except Exception:
-                    pass
-                os.write(fd, src_code)
-                os.close(fd)
-                fd = None
-                out, err, p_ret = output_subprocess_Popen(
-                    [theano.config.cxx, path, '-o', exe_path] + flags)
-                if p_ret != 0:
-                    compilation_ok = False
-                elif try_run:
-                    out, err, p_ret = output_subprocess_Popen([exe_path])
-                    run_ok = (p_ret == 0)
-            finally:
-                try:
-                    if fd is not None:
-                        os.close(fd)
-                finally:
-                    os.remove(path)
-                    os.remove(exe_path)
-        except OSError, e:
-            compilation_ok = False
-
-        if not try_run and not output:
-            return compilation_ok
-        elif not try_run and output:
-            return (compilation_ok, out, err)
-        elif not output:
-            return (compilation_ok, run_ok)
-        else:
-            return (compilation_ok, run_ok, out, err)
+        return Compiler._try_compile_tmp(src_code, tmp_prefix, flags,
+                                         try_run, output,
+                                         theano.config.cxx)
 
     @staticmethod
     def try_flags(flag_list, preambule="", body="",
                   try_run=False, output=False):
-        '''
-        Try to compile a dummy file with these flags.
-
-        Returns True if compilation was successful, False if there
-        were errors.
-        '''
-        if not theano.config.cxx:
-            return False
-
-        code = b("""
-        %(preambule)s
-        int main(int argc, char** argv)
-        {
-            %(body)s
-            return 0;
-        }
-        """ % locals())
-        return GCC_compiler.try_compile_tmp(code, tmp_prefix='try_flags_',
-                                            flags=flag_list, try_run=try_run,
-                                            output=output)
+        return Compiler._try_flags(flag_list, preambule, body, try_run, output,
+                                   theano.config.cxx)
 
     @staticmethod
     def compile_str(module_name, src_code, location=None,
@@ -1901,7 +1953,7 @@ class GCC_compiler(object):
         :returns: dynamically-imported python module of the compiled code.
             (unless py_module is False, in that case returns None.)
         """
-        #TODO: Do not do the dlimport in this function
+        # TODO: Do not do the dlimport in this function
 
         if not theano.config.cxx:
             raise MissingGXX("g++ not available! We can't compile c code.")
@@ -1961,10 +2013,10 @@ class GCC_compiler(object):
 
         def print_command_line_error():
             # Print command line when a problem occurred.
-            print >> sys.stderr, (
+            print((
                     "Problem occurred during compilation with the "
-                    "command line below:")
-            print >> sys.stderr, ' '.join(cmd)
+                    "command line below:"), file=sys.stderr)
+            print(' '.join(cmd), file=sys.stderr)
 
         try:
             p_out = output_subprocess_Popen(cmd)
@@ -1977,14 +2029,14 @@ class GCC_compiler(object):
         status = p_out[2]
 
         if status:
-            print '==============================='
+            print('===============================')
             for i, l in enumerate(src_code.split('\n')):
-                #gcc put its messages to stderr, so we add ours now
-                print >> sys.stderr, '%05i\t%s' % (i + 1, l)
-            print '==============================='
+                # gcc put its messages to stderr, so we add ours now
+                print('%05i\t%s' % (i + 1, l), file=sys.stderr)
+            print('===============================')
             print_command_line_error()
             # Print errors just below the command line.
-            print compile_stderr
+            print(compile_stderr)
             # We replace '\n' by '. ' in the error message because when Python
             # prints the exception, having '\n' in the text makes it more
             # difficult to read.
@@ -1992,10 +2044,10 @@ class GCC_compiler(object):
                             (status, compile_stderr.replace('\n', '. ')))
         elif config.cmodule.compilation_warning and compile_stderr:
             # Print errors just below the command line.
-            print compile_stderr
+            print(compile_stderr)
 
         if py_module:
-            #touch the __init__ file
+            # touch the __init__ file
             open(os.path.join(location, "__init__.py"), 'w').close()
             assert os.path.isfile(lib_filename)
             return dlimport(lib_filename)

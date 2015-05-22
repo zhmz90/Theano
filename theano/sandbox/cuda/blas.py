@@ -1,3 +1,4 @@
+from __future__ import print_function
 import copy
 import os
 import logging
@@ -225,15 +226,15 @@ class GpuGemm(GpuOp):
 
     def c_code(self, node, name, inputs, outputs, sub):
         #z_out = alpha * dot(x,y) + beta * z_in
-        #inplace version, set set z_out = z_in
-        #not inplace version, we copy z_in to z_out.
+        # inplace version, set set z_out = z_in
+        # not inplace version, we copy z_in to z_out.
         z_in, a, x, y, b = inputs
         z_out, = outputs
         inplace = int(self.inplace)
         fail = sub['fail']
         sio = StringIO()
 
-        print >> sio, """
+        print("""
 
         #define REAL float
         float %(name)s_a = (PyArray_TYPE(%(a)s) == NPY_FLOAT)
@@ -295,7 +296,7 @@ class GpuGemm(GpuOp):
         {
             %(fail)s;
         }
-        """
+        """, file=sio)
 
         return sio.getvalue() % locals()
 gpu_gemm_no_inplace = GpuGemm(inplace=False)
@@ -342,15 +343,15 @@ class GpuGemv(GpuOp):
 
     def c_code(self, node, name, inputs, outputs, sub):
         #z_out = alpha * dot(x,y) + beta * z_in
-        #inplace version, set set z_out = z_in
-        #not inplace version, we copy z_in to z_out.
+        # inplace version, set set z_out = z_in
+        # not inplace version, we copy z_in to z_out.
         z_in, a, x, y, b = inputs
         z_out, = outputs
         inplace = int(self.inplace)
         fail = sub['fail']
         sio = StringIO()
 
-        print >> sio, """
+        print("""
         float %(name)s_alpha = ((dtype_%(a)s*)(PyArray_DATA(%(a)s)))[0];
         float %(name)s_beta = ((dtype_%(b)s*)(PyArray_DATA(%(b)s)))[0];
 
@@ -393,7 +394,7 @@ class GpuGemv(GpuOp):
         {
             %(fail)s;
         }
-        """
+        """, file=sio)
         return sio.getvalue() % locals()
 gpu_gemv_no_inplace = GpuGemv(inplace=False)
 gpu_gemv_inplace = GpuGemv(inplace=True)
@@ -439,15 +440,15 @@ class GpuGer(GpuOp):
 
     def c_code(self, node, name, inputs, outputs, sub):
         #z_out = alpha * dot(x,y) + beta * z_in
-        #inplace version, set set z_out = z_in
-        #not inplace version, we copy z_in to z_out.
+        # inplace version, set set z_out = z_in
+        # not inplace version, we copy z_in to z_out.
         z_in, a, x, y = inputs
         z_out, = outputs
         inplace = int(self.inplace)
         fail = sub['fail']
         sio = StringIO()
 
-        print >> sio, """
+        print("""
         float %(name)s_alpha = ((dtype_%(a)s*)(PyArray_DATA(%(a)s)))[0];
 
         if (%(inplace)s
@@ -498,7 +499,7 @@ class GpuGer(GpuOp):
         {
             %(fail)s;
         }
-        """
+        """, file=sio)
         return sio.getvalue() % locals()
 gpu_ger_no_inplace = GpuGer(inplace=False)
 gpu_ger_inplace = GpuGer(inplace=True)
@@ -1081,7 +1082,7 @@ class BaseGpuCorr3dMM(GpuOp):
         if self.pad == "half":
             padH = padW = padD = -1
         elif self.pad == "full":
-            padH = padW = padD =-2
+            padH = padW = padD = -2
         else:
             padH, padW, padD = self.pad
         if direction == "forward":
@@ -1420,6 +1421,7 @@ class GpuCorr3dMM_gradWeights(BaseGpuCorr3dMM):
         else:
             return [[1], [1], [0], [0], [0]]  # no connection to height, width, depth
 
+
 class GpuCorr3dMM_gradInputs(BaseGpuCorr3dMM):
     """Gradient wrt. inputs for `GpuCorr3dMM`.
 
@@ -1556,14 +1558,14 @@ class GpuConv(GpuOp):
         self.subsample = subsample
         if logical_img_hw is not None:
             h, w = logical_img_hw
-            #TODO: reconsider this... since shapes are not given in
+            # TODO: reconsider this... since shapes are not given in
             # constructor, maybe a multiplier + offset is a more
             # appropriate way of passing this logical grid
             logical_img_hw = tuple(logical_img_hw)
         self.logical_img_hw = logical_img_hw
         if logical_kern_hw is not None:
             h, w = logical_kern_hw
-            #TODO: reconsider this... since shapes are not given in
+            # TODO: reconsider this... since shapes are not given in
             # constructor, maybe a multiplier + offset is a more
             # appropriate way of passing this logical grid
             logical_kern_hw = tuple(logical_kern_hw)
@@ -1771,7 +1773,7 @@ class GpuDownsampleFactorMax(GpuOp):
             raise TypeError()
         return Apply(self, [x], [x.type()])
 
-    #def perform(self, node, input_storage, output_storage):
+    # def perform(self, node, input_storage, output_storage):
         #raise NotImplementedError('only C is implemented')
     def c_code_cache_version(self):
         return (6)

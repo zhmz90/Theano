@@ -1,3 +1,4 @@
+from __future__ import print_function
 import cPickle
 import errno
 import logging
@@ -186,7 +187,7 @@ def filter_compiledir(path):
     else:
         try:
             os.makedirs(path, 0770)  # read-write-execute for user and group
-        except OSError, e:
+        except OSError as e:
             # Maybe another parallel execution of theano was trying to create
             # the same directory at the same time.
             if e.errno != errno.EEXIST:
@@ -198,8 +199,16 @@ def filter_compiledir(path):
     # os.system('touch') returned -1 for an unknown reason; the
     # alternate approach here worked in all cases... it was weird.
     # No error should happen as we checked the permissions.
-    open(os.path.join(path, '__init__.py'), 'w').close()
-
+    init_file = os.path.join(path, '__init__.py')
+    if not os.path.exists(init_file):
+        try:
+            open(init_file, 'w').close()
+        except IOError as e:
+            if os.path.exists(init_file):
+                pass  # has already been created
+            else:
+                e.args += ('%s exist? %s' % (path, os.path.exists(path)),)
+                raise
     return path
 
 
@@ -269,7 +278,7 @@ def cleanup():
             try:
                 filename = os.path.join(compiledir, directory, "key.pkl")
                 file = open(filename, 'rb')
-                #print file
+                # print file
                 try:
                     keydata = cPickle.load(file)
                     for key in list(keydata.keys):
@@ -277,8 +286,8 @@ def cleanup():
                         have_c_compiler = False
                         for obj in flatten(key):
                             if isinstance(obj, numpy.ndarray):
-                                #Reuse have_npy_abi_version to
-                                #force the removing of key
+                                # Reuse have_npy_abi_version to
+                                # force the removing of key
                                 have_npy_abi_version = False
                                 break
                             elif isinstance(obj, basestring):
@@ -290,18 +299,18 @@ def cleanup():
                                   hasattr(obj, 'c_code_cache_version')):
                                 v = obj.c_code_cache_version()
                                 if v not in [(), None] and v not in key[0]:
-                                    #Reuse have_npy_abi_version to
-                                    #force the removing of key
+                                    # Reuse have_npy_abi_version to
+                                    # force the removing of key
                                     have_npy_abi_version = False
                                     break
 
                         if not have_npy_abi_version or not have_c_compiler:
                             try:
-                                #This can happen when we move the compiledir.
+                                # This can happen when we move the compiledir.
                                 if keydata.key_pkl != filename:
                                     keydata.key_pkl = filename
                                 keydata.remove_key(key)
-                            except IOError, e:
+                            except IOError as e:
                                 _logger.error(
                                     "Could not remove file '%s'. To complete "
                                     "the clean-up, please remove manually "
@@ -367,46 +376,46 @@ def print_compiledir_content():
             if file is not None:
                 file.close()
 
-    print "List of %d compiled individual ops in this theano cache %s:" % (
-        len(table), compiledir)
-    print "sub directory/Op/a set of the different associated Theano type"
+    print("List of %d compiled individual ops in this theano cache %s:" % (
+        len(table), compiledir))
+    print("sub directory/Op/a set of the different associated Theano type")
     table = sorted(table, key=lambda t: str(t[1]))
     table_op_class = {}
     for dir, op, types in table:
-        print dir, op, types
+        print(dir, op, types)
         table_op_class.setdefault(op.__class__, 0)
         table_op_class[op.__class__] += 1
 
-    print
-    print ("List of %d individual compiled Op classes and "
-           "the number of times they got compiled" % len(table_op_class))
+    print()
+    print(("List of %d individual compiled Op classes and "
+           "the number of times they got compiled" % len(table_op_class)))
     table_op_class = sorted(table_op_class.iteritems(), key=lambda t: t[1])
     for op_class, nb in table_op_class:
-        print op_class, nb
+        print(op_class, nb)
 
     if big_key_files:
         big_key_files = sorted(big_key_files, key=lambda t: str(t[1]))
         big_total_size = sum([size for dir, size, ops in big_key_files])
-        print ("There are directories with key files bigger than %d bytes "
+        print(("There are directories with key files bigger than %d bytes "
                "(they probably contain big tensor constants)" %
-               max_key_file_size)
-        print ("They use %d bytes out of %d (total size used by all key files)"
-               "" % (big_total_size, total_key_sizes))
+               max_key_file_size))
+        print(("They use %d bytes out of %d (total size used by all key files)"
+               "" % (big_total_size, total_key_sizes)))
 
         for dir, size, ops in big_key_files:
-            print dir, size, ops
+            print(dir, size, ops)
 
     nb_keys = sorted(nb_keys.iteritems())
-    print
-    print "Number of keys for a compiled module"
-    print "number of keys/number of modules with that number of keys"
+    print()
+    print("Number of keys for a compiled module")
+    print("number of keys/number of modules with that number of keys")
     for n_k, n_m in nb_keys:
-        print n_k, n_m
+        print(n_k, n_m)
 
-    print ("Skipped %d files that contained more than"
-           " 1 op (was compiled with the C linker)" % more_than_one_ops)
-    print ("Skipped %d files that contained 0 op "
-           "(are they always theano.scalar ops?)" % zeros_op)
+    print(("Skipped %d files that contained more than"
+           " 1 op (was compiled with the C linker)" % more_than_one_ops))
+    print(("Skipped %d files that contained 0 op "
+           "(are they always theano.scalar ops?)" % zeros_op))
 
 
 def compiledir_purge():
@@ -425,18 +434,18 @@ def basecompiledir_ls():
     subdirs = sorted(subdirs)
     others = sorted(others)
 
-    print 'Base compile dir is %s' % theano.config.base_compiledir
-    print 'Sub-directories (possible compile caches):'
+    print('Base compile dir is %s' % theano.config.base_compiledir)
+    print('Sub-directories (possible compile caches):')
     for d in subdirs:
-        print '    %s' % d
+        print('    %s' % d)
     if not subdirs:
-        print '    (None)'
+        print('    (None)')
 
     if others:
-        print
-        print 'Other files in base_compiledir:'
+        print()
+        print('Other files in base_compiledir:')
         for f in others:
-            print '    %s' % f
+            print('    %s' % f)
 
 
 def basecompiledir_purge():

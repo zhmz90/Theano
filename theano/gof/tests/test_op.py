@@ -127,7 +127,7 @@ class TestOp:
         try:
             MyOp(Generic()(), MyType(1)())  # MyOp requires MyType instances
             raise Exception("Expected an exception")
-        except Exception, e:
+        except Exception as e:
             if str(e) != "Error 1":
                 raise
 
@@ -357,16 +357,16 @@ def test_get_debug_values_exc():
 
         try:
             for x_val in op.get_debug_values(x):
-                #this assert catches the case where we
-                #erroneously get a value returned
+                # this assert catches the case where we
+                # erroneously get a value returned
                 assert False
             raised = False
         except AttributeError:
             raised = True
 
-        #this assert catches the case where we got []
-        #returned, and possibly issued a warning,
-        #rather than raising an exception
+        # this assert catches the case where we got []
+        # returned, and possibly issued a warning,
+        # rather than raising an exception
         assert raised
 
     finally:

@@ -1,5 +1,6 @@
 """WRITEME
 """
+from __future__ import print_function
 import logging
 import warnings
 from textwrap import dedent
@@ -37,7 +38,7 @@ def check_equal(x, y):
     Returns True iff x[0] and y[0] are equal (checks the dtype and
     shape if x and y are numpy.ndarray instances). Used internally.
     """
-    #I put the import here to allow using theano without scipy.
+    # I put the import here to allow using theano without scipy.
     import scipy.sparse as sp
     x, y = x[0], y[0]
 
@@ -181,7 +182,7 @@ class PrintCurrentFunctionGraph(gof.Optimizer):
 
     def apply(self, fgraph):
         import theano.printing
-        print "PrintCurrentFunctionGraph:", self.header
+        print("PrintCurrentFunctionGraph:", self.header)
         theano.printing.debugprint(fgraph.outputs)
 
 
@@ -306,7 +307,7 @@ class Mode(object):
     def including(self, *tags):
         link, opt = self.get_linker_optimizer(self.provided_linker,
                 self.provided_optimizer)
-        #N.B. opt might be a Query instance, not sure what else it might be...
+        # N.B. opt might be a Query instance, not sure what else it might be...
         #     string? Optimizer? OptDB? who knows???
         return self.__class__(linker=link, optimizer=opt.including(*tags))
 
@@ -358,9 +359,9 @@ def get_mode(orig_string):
 
     if string in ['Mode', 'ProfileMode', 'DebugMode']:
         if string == 'DebugMode':
-            #need to import later to break circular dependency.
+            # need to import later to break circular dependency.
             from debugmode import DebugMode
-            #DebugMode use its own linker.
+            # DebugMode use its own linker.
             ret = DebugMode(optimizer=config.optimizer)
         else:
             # The import is needed in case string is ProfileMode
@@ -382,9 +383,9 @@ def get_mode(orig_string):
             ret = ret.requiring(*theano.config.optimizer_requiring.split(':'))
         instanciated_default_mode = ret
 
-    #must tell python to print the summary at the end.
+    # must tell python to print the summary at the end.
     if string == 'ProfileMode':
-        #need to import later to break circular dependency.
+        # need to import later to break circular dependency.
         prof_mode_instance_to_print.append(ret)
 
     return ret

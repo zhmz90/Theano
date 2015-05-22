@@ -1,3 +1,4 @@
+from __future__ import print_function
 import logging
 import theano
 
@@ -42,7 +43,9 @@ class MatrixPinv(Op):
         assert x.ndim == 2
         return Apply(self, [x], [x.type()])
 
-    def perform(self, node, (x,), (z, )):
+    def perform(self, node, inputs, outputs):
+        (x,) = inputs
+        (z,) = outputs
         z[0] = numpy.linalg.pinv(x).astype(x.dtype)
 
 pinv = MatrixPinv()
@@ -69,7 +72,9 @@ class MatrixInverse(Op):
         assert x.ndim == 2
         return Apply(self, [x], [x.type()])
 
-    def perform(self, node, (x,), (z, )):
+    def perform(self, node, inputs, outputs):
+        (x,) = inputs
+        (z,) = outputs
         z[0] = numpy.linalg.inv(x).astype(x.dtype)
 
     def grad(self, inputs, g_outputs):
@@ -88,7 +93,7 @@ class MatrixInverse(Op):
         x, = inputs
         xi = self(x)
         gz, = g_outputs
-        #TT.dot(gz.T,xi)
+        # TT.dot(gz.T,xi)
         return [-matrix_dot(xi, gz.T, xi).T]
 
     def R_op(self, inputs, eval_points):
@@ -149,7 +154,9 @@ class AllocDiag(Op):
     def grad(self, inputs, g_outputs):
         return [extract_diag(g_outputs[0])]
 
-    def perform(self, node, (x,), (z,)):
+    def perform(self, node, inputs, outputs):
+        (x,) = inputs
+        (z,) = outputs
         if x.ndim != 1:
             raise TypeError(x)
         z[0] = numpy.diag(x)
@@ -225,7 +232,7 @@ class ExtractDiag(Op):
         return [(shp,)]
 
 extract_diag = ExtractDiag()
-#TODO: optimization to insert ExtractDiag with view=True
+# TODO: optimization to insert ExtractDiag with view=True
 
 
 def diag(x):
@@ -264,11 +271,13 @@ class Det(Op):
         o = theano.tensor.scalar(dtype=x.dtype)
         return Apply(self, [x], [o])
 
-    def perform(self, node, (x,), (z, )):
+    def perform(self, node, inputs, outputs):
+        (x,) = inputs
+        (z,) = outputs
         try:
             z[0] = numpy.asarray(numpy.linalg.det(x), dtype=x.dtype)
         except Exception:
-            print 'Failed to compute determinant', x
+            print('Failed to compute determinant', x)
             raise
 
     def grad(self, inputs, g_outputs):
@@ -298,7 +307,9 @@ class Eig(Op):
         v = theano.tensor.matrix(dtype=x.dtype)
         return Apply(self, [x], [w, v])
 
-    def perform(self, node, (x,), (w, v)):
+    def perform(self, node, inputs, outputs):
+        (x,) = inputs
+        (w, v) = outputs
         w[0], v[0] = [z.astype(x.dtype) for z in self._numop(x)]
 
     def infer_shape(self, node, shapes):
@@ -333,7 +344,9 @@ class Eigh(Eig):
         v = theano.tensor.matrix(dtype=x.dtype)
         return Apply(self, [x], [w, v])
 
-    def perform(self, node, (x,), (w, v)):
+    def perform(self, node, inputs, outputs):
+        (x,) = inputs
+        (w, v) = outputs
         w[0], v[0] = self._numop(x, self.UPLO)
 
     def grad(self, inputs, g_outputs):
@@ -459,14 +472,18 @@ class QRFull(Op):
         x = as_tensor_variable(x)
         assert x.ndim == 2, "The input of qr function should be a matrix."
         q = theano.tensor.matrix(dtype=x.dtype)
-        r = theano.tensor.matrix(dtype=x.dtype)
+        if self.mode != 'raw':
+            r = theano.tensor.matrix(dtype=x.dtype)
+        else:
+            r = theano.tensor.vector(dtype=x.dtype)
+
         return Apply(self, [x], [q, r])
 
-    def perform(self, node, (x,), (q, r)):
+    def perform(self, node, inputs, outputs):
+        (x,) = inputs
+        (q, r) = outputs
         assert x.ndim == 2, "The input of qr function should be a matrix."
-
-        q[0], r[0] = self._numop(x,
-                                 self.mode)
+        q[0], r[0] = self._numop(x, self.mode)
 
 
 class QRIncomplete(Op):
@@ -487,7 +504,9 @@ class QRIncomplete(Op):
         q = theano.tensor.matrix(dtype=x.dtype)
         return Apply(self, [x], [q])
 
-    def perform(self, node, (x,), (q,)):
+    def perform(self, node, inputs, outputs):
+        (x,) = inputs
+        (q,) = outputs
         assert x.ndim == 2, "The input of qr function should be a matrix."
         q[0] = self._numop(x,
                            self.mode)
@@ -558,7 +577,7 @@ def qr(a, mode="full"):
       The upper-triangular matrix.
     """
     x = [[2, 1], [3, 4]]
-    if isinstance(numpy.linalg.qr(x,mode), tuple):
+    if isinstance(numpy.linalg.qr(x, mode), tuple):
         return QRFull(mode)(a)
     else:
         return QRIncomplete(mode)(a)
@@ -592,7 +611,9 @@ class SVD(Op):
         v = theano.tensor.matrix(dtype=x.dtype)
         return Apply(self, [x], [w, u, v])
 
-    def perform(self, node, (x,), (w, u, v)):
+    def perform(self, node, inputs, outputs):
+        (x,) = inputs
+        (w, u, v) = outputs
         assert x.ndim == 2, "The input of svd function should be a matrix."
         w[0], u[0], v[0] = self._numop(x,
                                        self.full_matrices,
@@ -665,7 +686,7 @@ def matrix_power(M, n):
     return result
 
 
-def norm(x,ord):
+def norm(x, ord):
     x = as_tensor_variable(x)
     ndim = x.ndim
     if ndim == 0:
@@ -695,7 +716,7 @@ def norm(x,ord):
         elif ord == 1:
             return tensor.max(tensor.sum(abs(x), 0))
         elif ord == -1:
-            return tensor.min(tensor.sum(abs(x),0))
+            return tensor.min(tensor.sum(abs(x), 0))
         else:
             raise ValueError(0)
     elif ndim > 2:

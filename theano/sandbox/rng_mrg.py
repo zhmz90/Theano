@@ -5,6 +5,7 @@ Generator code in SSJ package (L'Ecuyer & Simard)
 http://www.iro.umontreal.ca/~simardr/ssj/indexe.html
 
 """
+from __future__ import print_function
 import warnings
 
 import numpy
@@ -17,7 +18,6 @@ from theano.tensor import (raw_random, TensorType, as_tensor_variable,
 from theano.tensor import sqrt, log, sin, cos, join, prod
 from theano.compile import optdb
 from theano.gof import local_optimizer
-from theano.compat.python2x import all, any
 
 import multinomial
 
@@ -28,6 +28,7 @@ if cuda_available:
 
 from theano.sandbox.gpuarray.basic_ops import GpuKernelBase, Kernel
 from theano.sandbox.gpuarray.type import GpuArrayType
+from theano.sandbox.gpuarray.fp16_help import write_w
 
 
 def matVecModM(A, s, m):
@@ -52,7 +53,7 @@ def multMatVect(v, A, m1, B, m2):
         m2_sym = tensor.iscalar('m2')
         o = DotModulo()(A_sym, s_sym, m_sym, A2_sym, s2_sym, m2_sym)
         multMatVect.dot_modulo = function(
-            [A_sym, s_sym, m_sym, A2_sym, s2_sym, m2_sym], o)
+            [A_sym, s_sym, m_sym, A2_sym, s2_sym, m2_sym], o, profile=False)
 
     # This way of calling the Theano fct is done to bypass Theano overhead.
     f = multMatVect.dot_modulo
@@ -85,7 +86,9 @@ class DotModulo(Op):
     def make_node(self, A, s, m, A2, s2, m2):
         return Apply(self, [A, s, m, A2, s2, m2], [s.type()])
 
-    def perform(self, node, (A, s, m, A2, s2, m2), (out, )):
+    def perform(self, node, inputs, outputs):
+        (A, s, m, A2, s2, m2) = inputs
+        (out,) = outputs
         o1 = matVecModM(A, s, m)
         o2 = matVecModM(A2, s2, m2)
         out[0] = numpy.concatenate((o1, o2))
@@ -93,7 +96,9 @@ class DotModulo(Op):
     def c_code_cache_version(self):
         return (6,)
 
-    def c_code(self, node, name, (_A, _s, _m, _A2, _s2, _m2), (_z, ), sub):
+    def c_code(self, node, name, inputs, outputs, sub):
+        (_A, _s, _m, _A2, _s2, _m2) = inputs
+        (_z,) = outputs
         return """
         int osize = -1;
         if (PyArray_NDIM(%(_A)s) != 2) {PyErr_SetString(PyExc_NotImplementedError, "rank(A) != 2"); %(fail)s;}
@@ -185,8 +190,8 @@ class DotModulo(Op):
         """ % dict(locals(), **sub)
 
 
-#MRG31k3p
-#generator constants :
+# MRG31k3p
+# generator constants :
 M1 = numpy.asarray(numpy.int32(2147483647))    #2^31 - 1
 M2 = numpy.asarray(numpy.int32(2147462579))    #2^31 - 21069
 MASK12 = numpy.int32(511)                      #2^9 - 1
@@ -195,9 +200,9 @@ MASK2 = numpy.int32(65535)                     #2^16 - 1
 MULT2 = numpy.int32(21069)
 NORM = 4.656612873077392578125e-10;            #1./2^31
 
-#A1p0 = numpy.asarray([[0, 4194304, 129], [1, 0, 0], [0, 1, 0]],
+# A1p0 = numpy.asarray([[0, 4194304, 129], [1, 0, 0], [0, 1, 0]],
 #                      dtype='int64')
-#A2p0 = numpy.asarray([[32768, 0, 32769], [1, 0, 0], [0, 1, 0]],
+# A2p0 = numpy.asarray([[32768, 0, 32769], [1, 0, 0], [0, 1, 0]],
 #                      dtype='int64')
 
 A1p72 = numpy.asarray([[1516919229, 758510237, 499121365],
@@ -235,7 +240,7 @@ def mrg_next_value(rstate, new_rstate):
     assert type(x11) == numpy.int32
 
     i0, i7, i9, i15, i16, i22, i24 = np_int32_vals
-    #first component
+    # first component
     y1 = (((x12 & MASK12) << i22) + (x12 >> i9) +
           ((x13 & MASK13) << i7) + (x13 >> i24))
 
@@ -250,7 +255,7 @@ def mrg_next_value(rstate, new_rstate):
     x12 = x11
     x11 = y1
 
-    #second component
+    # second component
     y1 = ((x21 & MASK2) << i15) + (MULT2 * (x21 >> i16))
     assert type(y1) == numpy.int32
     if (y1 < 0 or y1 >= M2):
@@ -323,7 +328,7 @@ class mrg_uniform_base(Op):
 
 
 class mrg_uniform(mrg_uniform_base):
-    #CPU VERSION
+    # CPU VERSION
 
     @classmethod
     def new(cls, rstate, ndim, dtype, size):
@@ -336,15 +341,6 @@ class mrg_uniform(mrg_uniform_base):
     def perform(self, node, inp, out):
         rstate, size = inp
         o_rstate, o_sample = out
-        numpy_version = numpy.__version__.split('.')
-
-        if (not self.warned_numpy_version and
-            int(numpy_version[0]) <= 1 and
-            int(numpy_version[1]) < 3):
-
-            print "Warning: you must use numpy version 1.3.0 or higher with the python version of this op. Otherwise numpy leak memory. and numpy"
-            self.warned_numpy_version = True
-
         n_elements = 1
 
         rstate = numpy.asarray(rstate)  # bring state from GPU if necessary
@@ -373,6 +369,10 @@ class mrg_uniform(mrg_uniform_base):
 
     def c_code(self, node, name, inp, out, sub):
         rstate, size = inp
+        # If we try to use the C code here with something else than a
+        # TensorType, something is wrong (likely one of the GPU ops
+        # not defining C code correctly).
+        assert isinstance(node.inputs[0].type, TensorType)
         o_rstate, o_sample = out
         if self.inplace:
             o_rstate_requirement = 'NPY_ARRAY_C_CONTIGUOUS|NPY_ARRAY_ALIGNED'
@@ -534,7 +534,7 @@ class mrg_uniform(mrg_uniform_base):
 
 
 class GPU_mrg_uniform(mrg_uniform_base, GpuOp):
-    #GPU VERSION
+    # GPU VERSION
 
     @classmethod
     def new(cls, rstate, ndim, dtype, size):
@@ -772,7 +772,8 @@ class GPU_mrg_uniform(mrg_uniform_base, GpuOp):
 
 
 class GPUA_mrg_uniform(GpuKernelBase, mrg_uniform_base):
-    #GpuArray version
+    # GpuArray version
+    _f16_ok = True
 
     @classmethod
     def new(cls, rstate, ndim, dtype, size):
@@ -786,14 +787,27 @@ class GPUA_mrg_uniform(GpuKernelBase, mrg_uniform_base):
         return super(GPUA_mrg_uniform, self).c_headers() + ['numpy_compat.h']
 
     def gpu_kernels(self, node, name):
-        if self.output_type.dtype == 'float32':
+        write = write_w(self.output_type.dtype)
+        if self.output_type.dtype == 'float16':
+            otype = 'ga_half'
+            # limit the values of the state that we use.
+            mask = '& 0x7fff'
+            NORM = '3.0518e-05f'  # numpy.float16(1.0/(2**15+8))
+            # this was determined by finding the biggest number such that
+            # numpy.float16(number * (M1 & 0x7fff)) < 1.0
+        elif self.output_type.dtype == 'float32':
             otype = 'float'
+            mask = ''
             NORM = '4.6566126e-10f'  # numpy.float32(1.0/(2**31+65))
             # this was determined by finding the biggest number such that
             # numpy.float32(number * M1) < 1.0
-        else:
+        elif self.output_type.dtype == 'float64':
             otype = 'double'
+            mask = ''
             NORM = '4.656612873077392578125e-10'
+        else:
+            raise ValueError('Unsupported data type for output',
+                             self.output_type.dtype)
         code = """
         KERNEL void mrg_uniform(
                 GLOBAL_MEM %(otype)s *sample_data,
@@ -856,11 +870,11 @@ class GPUA_mrg_uniform(GpuKernelBase, mrg_uniform_base):
                 x21 = y2;
 
                 if (x11 <= x21) {
-                    sample_data[i] = (x11 - x21 + M1) * %(NORM)s;
+                    sample_data[i] = %(write)s(((x11 - x21 + M1) %(mask)s) * %(NORM)s);
                 }
                 else
                 {
-                    sample_data[i] = (x11 - x21) * %(NORM)s;
+                    sample_data[i] = %(write)s(((x11 - x21) %(mask)s) * %(NORM)s);
                 }
             }
 
@@ -892,17 +906,9 @@ class GPUA_mrg_uniform(GpuKernelBase, mrg_uniform_base):
         o_type_num = numpy.asarray(0, dtype=self.output_type.dtype).dtype.num
         fail = sub['fail']
         kname = self.gpu_kernels(node, nodename)[0].objvar
-
-        if self.output_type.dtype == 'float32':
-            otype = 'float'
-            otypecode = 'GA_FLOAT'
-        else:
-            otype = 'double'
-            otypecode = 'GA_DOUBLE'
+        otypecode = str(self.output_type.typecode)
 
         return """
-        //////// <code generated by mrg_uniform>
-
         size_t odims[%(ndim)s];
         unsigned int n_elements = 1;
         unsigned int n_streams;
@@ -988,23 +994,28 @@ class GPUA_mrg_uniform(GpuKernelBase, mrg_uniform_base):
 
         {
           void *args[4];
-          args[0] = &%(o_sample)s->ga;
-          args[1] = &%(o_rstate)s->ga;
+          size_t ls = 0, gs = 0;
+          args[0] = %(o_sample)s->ga.data;
+          args[1] = %(o_rstate)s->ga.data;
           args[2] = &n_elements;
           args[3] = &n_streams;
-          int err = GpuKernel_call(&%(kname)s, n_elements, 0, 0, args);
+          int err = GpuKernel_sched(&%(kname)s, n_elements, &ls, &gs);
+          if (err != GA_NO_ERROR) {
+              PyErr_Format(PyExc_RuntimeError, "GpuKernel_sched: %%s\\n",
+                           GpuKernel_error(&%(kname)s, err));
+              %(fail)s
+          }
+          err = GpuKernel_call(&%(kname)s, 1, &ls, &gs, 0, args);
           if (err != GA_NO_ERROR) {
               PyErr_Format(PyExc_RuntimeError, "GpuKernel_call: %%s\\n",
                            GpuKernel_error(&%(kname)s, err));
               %(fail)s
           }
         }
-
-        //////// </ code generated by mrg_uniform>
         """ % locals()
 
     def c_code_cache_version(self):
-        return (3, self.GpuKernelBase_version)
+        return (7, self.GpuKernelBase_version)
 
 
 def guess_n_streams(size, warn=False):
@@ -1220,6 +1231,8 @@ class MRG_RandomStreams(object):
             u = self.pretty_return(node_rstate,
                                    *mrg_uniform.new(node_rstate,
                                                     ndim, dtype, size))
+        # Add a reference to distinguish from other shared variables
+        node_rstate.tag.is_rng = True
         r = u * (high - low) + low
 
         if u.type.broadcastable != r.type.broadcastable:
@@ -1329,7 +1342,7 @@ class MRG_RandomStreams(object):
                 n_samples += 1
                 evened = True
         else:
-            #if even, don't change, if odd, +1
+            # if even, don't change, if odd, +1
             n_samples = prod(size) + (prod(size) % 2)
         flattened = self.uniform(size=(n_samples,), dtype=dtype,
                                  nstreams=nstreams)
@@ -1374,6 +1387,7 @@ class MRG_RandomStreams(object):
 from theano.sandbox.gpuarray.opt import (register_opt as register_gpua,
                                          host_from_gpu as host_from_gpua)
 
+
 @register_gpua()
 @local_optimizer([mrg_uniform])
 def local_gpua_mrg(node):
@@ -1387,6 +1401,8 @@ def local_gpua_mrg(node):
 
 
 MRG_RNGs = (mrg_uniform, GPU_mrg_uniform, GPUA_mrg_uniform)
+
+
 @local_optimizer(MRG_RNGs)
 def mrg_random_make_inplace(node):
     op = node.op

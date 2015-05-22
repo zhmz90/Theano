@@ -66,7 +66,7 @@ PLATFORMS           = ["Windows", "Linux", "Solaris", "Mac OS-X", "Unix"]
 MAJOR               = 0
 MINOR               = 7
 MICRO               = 0
-SUFFIX              = "rc2"  # Should be blank except for rc's, betas, etc.
+SUFFIX              = ""  # Should be blank except for rc's, betas, etc.
 ISRELEASED          = False
 
 VERSION             = '%d.%d.%d%s' % (MAJOR, MINOR, MICRO, SUFFIX)
@@ -138,7 +138,7 @@ short_version = '%(version)s'
 version = '%(version)s'
 git_revision = '%(git_revision)s'
 full_version = '%(version)s.dev-%%(git_revision)s' %% {
-        'git_revision': git_revision}
+    'git_revision': git_revision}
 release = %(isrelease)s
 
 if not release:

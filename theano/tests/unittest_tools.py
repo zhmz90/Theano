@@ -1,3 +1,4 @@
+from __future__ import print_function
 from copy import copy, deepcopy
 from functools import wraps
 import logging
@@ -10,7 +11,6 @@ import numpy
 import theano
 import theano.tensor as T
 from theano.configparser import config, AddConfigVar, StrParam
-from theano.compat.python2x import any
 try:
     from nose.plugins.skip import SkipTest
 except ImportError:
@@ -59,8 +59,8 @@ def fetch_seed(pseed=None):
         else:
             seed = None
     except ValueError:
-        print >> sys.stderr, ('Error: config.unittests.rseed contains '
-                              'invalid seed, using None instead')
+        print(('Error: config.unittests.rseed contains '
+                              'invalid seed, using None instead'), file=sys.stderr)
         seed = None
 
     return seed
@@ -74,8 +74,8 @@ def seed_rng(pseed=None):
 
     seed = fetch_seed(pseed)
     if pseed and pseed != seed:
-        print >> sys.stderr, 'Warning: using seed given by config.unittests.rseed=%i'\
-                'instead of seed %i given as parameter' % (seed, pseed)
+        print('Warning: using seed given by config.unittests.rseed=%i'\
+                'instead of seed %i given as parameter' % (seed, pseed), file=sys.stderr)
     numpy.random.seed(seed)
     return seed
 
@@ -238,7 +238,7 @@ class InferShapeTester(unittest.TestCase):
         outputs_function = theano.function(inputs, outputs, mode=mode)
         shapes_function = theano.function(inputs, [o.shape for o in outputs],
                                           mode=mode)
-        #theano.printing.debugprint(shapes_function)
+        # theano.printing.debugprint(shapes_function)
         # Check that the Op is removed from the compiled function.
         if check_topo:
             topo_shape = shapes_function.maker.fgraph.toposort()
@@ -259,57 +259,57 @@ def str_diagnostic(expected, value, rtol, atol):
 
     try:
         ssio = StringIO()
-        print >> ssio, "           : shape, dtype, strides, min, max, n_inf, n_nan:"
-        print >> ssio, "  Expected :",
-        print >> ssio, expected.shape,
-        print >> ssio, expected.dtype,
-        print >> ssio, expected.strides,
-        print >> ssio, expected.min(),
-        print >> ssio, expected.max(),
-        print >> ssio, numpy.isinf(expected).sum(),
-        print >> ssio, numpy.isnan(expected).sum(),
+        print("           : shape, dtype, strides, min, max, n_inf, n_nan:", file=ssio)
+        print("  Expected :", end=' ', file=ssio)
+        print(expected.shape, end=' ', file=ssio)
+        print(expected.dtype, end=' ', file=ssio)
+        print(expected.strides, end=' ', file=ssio)
+        print(expected.min(), end=' ', file=ssio)
+        print(expected.max(), end=' ', file=ssio)
+        print(numpy.isinf(expected).sum(), end=' ', file=ssio)
+        print(numpy.isnan(expected).sum(), end=' ', file=ssio)
         # only if all succeeds to we add anything to sio
-        print >> sio, ssio.getvalue()
+        print(ssio.getvalue(), file=sio)
     except Exception:
         pass
     try:
         ssio = StringIO()
-        print >> ssio, "  Value    :",
-        print >> ssio, value.shape,
-        print >> ssio, value.dtype,
-        print >> ssio, value.strides,
-        print >> ssio, value.min(),
-        print >> ssio, value.max(),
-        print >> ssio, numpy.isinf(value).sum(),
-        print >> ssio, numpy.isnan(value).sum(),
+        print("  Value    :", end=' ', file=ssio)
+        print(value.shape, end=' ', file=ssio)
+        print(value.dtype, end=' ', file=ssio)
+        print(value.strides, end=' ', file=ssio)
+        print(value.min(), end=' ', file=ssio)
+        print(value.max(), end=' ', file=ssio)
+        print(numpy.isinf(value).sum(), end=' ', file=ssio)
+        print(numpy.isnan(value).sum(), end=' ', file=ssio)
         # only if all succeeds to we add anything to sio
-        print >> sio, ssio.getvalue()
+        print(ssio.getvalue(), file=sio)
     except Exception:
         pass
 
-    print >> sio, "  expected    :", expected
-    print >> sio, "  value    :", value
+    print("  expected    :", expected, file=sio)
+    print("  value    :", value, file=sio)
 
     try:
         ov = numpy.asarray(expected)
         nv = numpy.asarray(value)
         ssio = StringIO()
         absdiff = numpy.absolute(nv - ov)
-        print >> ssio, "  Max Abs Diff: ", numpy.max(absdiff)
-        print >> ssio, "  Mean Abs Diff: ", numpy.mean(absdiff)
-        print >> ssio, "  Median Abs Diff: ", numpy.median(absdiff)
-        print >> ssio, "  Std Abs Diff: ", numpy.std(absdiff)
+        print("  Max Abs Diff: ", numpy.max(absdiff), file=ssio)
+        print("  Mean Abs Diff: ", numpy.mean(absdiff), file=ssio)
+        print("  Median Abs Diff: ", numpy.median(absdiff), file=ssio)
+        print("  Std Abs Diff: ", numpy.std(absdiff), file=ssio)
         reldiff = numpy.absolute(nv - ov) / (numpy.absolute(nv) +
                                              numpy.absolute(ov))
-        print >> ssio, "  Max Rel Diff: ", numpy.max(reldiff)
-        print >> ssio, "  Mean Rel Diff: ", numpy.mean(reldiff)
-        print >> ssio, "  Median Rel Diff: ", numpy.median(reldiff)
-        print >> ssio, "  Std Rel Diff: ", numpy.std(reldiff)
+        print("  Max Rel Diff: ", numpy.max(reldiff), file=ssio)
+        print("  Mean Rel Diff: ", numpy.mean(reldiff), file=ssio)
+        print("  Median Rel Diff: ", numpy.median(reldiff), file=ssio)
+        print("  Std Rel Diff: ", numpy.std(reldiff), file=ssio)
         # only if all succeeds to we add anything to sio
-        print >> sio, ssio.getvalue()
+        print(ssio.getvalue(), file=sio)
     except Exception:
         pass
-    #Use the same formula as in _allclose to find the tolerance used
+    # Use the same formula as in _allclose to find the tolerance used
     narrow = 'float32', 'complex64'
     if ((str(expected.dtype) in narrow) or
         (str(value.dtype) in narrow)):
@@ -322,7 +322,7 @@ def str_diagnostic(expected, value, rtol, atol):
         rtol_ = rtol
     if atol is not None:
         atol_ = atol
-    print >> sio, "  rtol, atol:", rtol_, atol_
+    print("  rtol, atol:", rtol_, atol_, file=sio)
     return sio.getvalue()
 
 
@@ -430,6 +430,5 @@ class AttemptManyTimes:
                     # Update the current_seed
                     if current_seed not in [None, "random"]:
                         current_seed = str(int(current_seed) + 1)
-
 
         return attempt_multiple_times

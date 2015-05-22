@@ -78,7 +78,7 @@ The package will be installed to ``C:\Program Files
 (x86)\Common Files\Microsoft\Visual C++ for Python\9.0``.
 
 Finally download the ``stdint.h`` header from
-`here <ttp://msinttypes.googlecode.com/svn/trunk/stdint.h>`_ and save it as
+`here <http://msinttypes.googlecode.com/svn/trunk/stdint.h>`_ and save it as
 ``C:\Program Files (x86)\Common Files\Microsoft\Visual C++ for
 Python\9.0\VC\include\stdint.h``.
 
@@ -110,7 +110,7 @@ free.
 
 WinPython also allows for a portable installation and doesn't clutter
 your main system PATH. We have installed it to
-``c:\SciSoft\WinPython-64bit-2.7.6.4``.
+``c:\SciSoft\WinPython-64bit-2.7.9.4``.
 
 Alternative in academia: EPD
 ++++++++++++++++++++++++++++
@@ -170,7 +170,7 @@ can download the installation for free.
 
 
 
-Alternative: AnacondaCE
+Alternative: Anaconda
 +++++++++++++++++++++++
 
 ContinuumIO_ is providing a free Python distribution for Windows (32-bit
@@ -178,10 +178,14 @@ and 64-bit), including all dependencies of Theano. If you are not
 eligible for a download of EPD or Canopy (via a commercial, or free academic
 licence), this is the easiest way to install
 Theano's dependencies. Simply download and execute the installer from
-`AnacondaCE download page <http://continuum.io/anacondace.html>`__,
-then download and execute the :ref:`windows_anaconda`.
+`Anaconda download page <https://store.continuum.io/cshop/anaconda/>`__,
+and execute the following in Windows command line:
 
 .. _ContinuumIO: http://continuum.io
+
+.. code-block:: bash
+
+    $ conda install mingw libpython
 
 Alternative: Python(x,y)
 ++++++++++++++++++++++++
@@ -305,7 +309,7 @@ configure the system path:
    set PATH=%SCISOFT%\TDM-GCC-64\bin;%SCISOFT%\TDM-GCC-64\x86_64-w64-mingw32\bin;%PATH%
 
    REM add winpython stuff
-   CALL %SCISOFT%\WinPython-64bit-2.7.6.4\scripts\env.bat
+   CALL %SCISOFT%\WinPython-64bit-2.7.9.4\scripts\env.bat
 
    REM configure path for msvc compilers
    REM for a 32 bit installation change this line to
@@ -333,9 +337,9 @@ shell and ``cd`` to ``c:\SciSoft``. Then execute:
 
 .. code-block:: cmd
 
-   gendef WinPython-64bit-2.7.6.4\python-2.7.6.amd64\python27.dll
+   gendef WinPython-64bit-2.7.9.4\python-2.7.9.amd64\python27.dll
 
-   dlltool --dllname python27.dll --def python27.def --output-lib WinPython-64bit-2.7.6.4\python-2.7.6.amd64\libs\libpython27.a
+   dlltool --dllname python27.dll --def python27.def --output-lib WinPython-64bit-2.7.9.4\python-2.7.9.amd64\libs\libpython27.a
 
 Installing Theano
 ~~~~~~~~~~~~~~~~~
@@ -359,11 +363,11 @@ Theano. For the bleeding-edge version execute
 
   git clone https://github.com/Theano/Theano.git
 
-For the latest stable release 0.6 (as of Oct 2014) run instead:
+For the latest stable release 0.7 (as of March 2015) run instead:
 
 .. code-block:: bash
 
-  git clone https://github.com/Theano/Theano.git --branch rel-0.6
+  git clone https://github.com/Theano/Theano.git --branch rel-0.7
 
 Either way, a folder `Theano` will be created with the library
 downloaded to it.
@@ -377,11 +381,11 @@ To get the latest bleeding edge version got to `Theano on GitHub
 <https://github.com/Theano/Theano/archive/master.zip>`_. Then unzip it
 somewhere.
 
-Alternatively, you can check the latest release release 0.6 (as of Oct
-2014) by going to
-https://github.com/Theano/Theano/releases/tag/rel-0.6 and
+Alternatively, you can check the latest release release 0.7 (as of March
+2015) by going to
+https://github.com/Theano/Theano/releases/tag/rel-0.7 and
 downloading the `zip
-<https://github.com/Theano/Theano/archive/rel-0.6.zip>`_.
+<https://github.com/Theano/Theano/archive/rel-0.7.zip>`_.
 
 Configuring Theano
 ##################
@@ -433,7 +437,7 @@ Theano can be configured with a ``.theanorc`` text file (or
 Windows). It should be placed in the directory pointed to by the
 ``%USERPROFILE%`` variable. Please note, that WinPython changes it to
 ``WinPythonDir\settings`` (so in our system this corresponds to
-``c:\scisoft\WinPython-64bit-2.7.6.4\settings``.
+``c:\scisoft\WinPython-64bit-2.7.9.4\settings``.
 
 To use the GPU please write the following configuration file:
 

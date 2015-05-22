@@ -1,3 +1,4 @@
+from __future__ import print_function
 import time
 
 from nose.plugins.skip import SkipTest
@@ -31,9 +32,9 @@ def test_get_diagonal_subtensor_view(wrap=lambda a: a):
     xv02 = get_diagonal_subtensor_view(x, 0, 2)
     xv12 = get_diagonal_subtensor_view(x, 1, 2)
 
-    #print 'x', x
-    #print 'xv01', xv01
-    #print 'xv02', xv02
+    # print 'x', x
+    # print 'xv01', xv01
+    # print 'xv02', xv02
     assert numpy.all(numpy.asarray(xv01) == [
         [[12, 13], [8, 9], [4, 5]],
         [[18, 19], [14, 15], [10, 11]]])
@@ -62,11 +63,11 @@ def pyconv3d(signals, filters):
     for ns in xrange(Ns):
         for nf in xrange(Nf):
             for c in xrange(C):
-                s_i = signals[ns,:,c,:,:]
-                f_i = filters[nf,:,c,:,:]
+                s_i = signals[ns, :, c, :, :]
+                f_i = filters[nf, :, c, :, :]
                 r_i = rval[ns, :, nf, :, :]
                 o_i = ndimage.convolve(s_i, f_i, mode='constant', cval=1)
-                #print s_i.shape, f_i.shape, r_i.shape, o_i.shape
+                # print s_i.shape, f_i.shape, r_i.shape, o_i.shape
                 r_i += o_i[Tf2:-Tf2, Hf2:-Hf2, Wf2:-Wf2]
     return rval
 
@@ -83,7 +84,7 @@ def test_conv3d(mode=mode_without_gpu, shared=theano.tensor._shared):
 
     t0 = time.time()
     pyres = pyconv3d(signals, filters)
-    print time.time() - t0
+    print(time.time() - t0)
 
     s_signals = shared(signals)
     s_filters = shared(filters)
@@ -99,7 +100,7 @@ def test_conv3d(mode=mode_without_gpu, shared=theano.tensor._shared):
 
     t0 = time.time()
     newconv3d()
-    print time.time() - t0
+    print(time.time() - t0)
     utt.assert_allclose(pyres, s_output.get_value(borrow=True))
     gsignals, gfilters = theano.grad(out.sum(), [s_signals, s_filters])
     gnewconv3d = theano.function([], [],
@@ -110,7 +111,7 @@ def test_conv3d(mode=mode_without_gpu, shared=theano.tensor._shared):
 
     t0 = time.time()
     gnewconv3d()
-    print 'grad', time.time() - t0
+    print('grad', time.time() - t0)
 
     Ns, Ts, C, Hs, Ws = 3, 3, 3, 5, 5
     Nf, Tf, C, Hf, Wf = 4, 2, 3, 2, 2

@@ -13,6 +13,7 @@ from theano.sandbox.cuda.basic_ops import (
 
 _one = scal.constant(numpy.asarray(1.0, dtype='float32'))
 
+
 def grab_cpu_scalar(v, nd):
     if v.owner is not None:
         n = v.owner
@@ -52,7 +53,7 @@ def is_equal(var, val):
     try:
         v = get_scalar_constant_value(var)
         return v == val
-    except NotScalarConstantValue:
+    except NotScalarConstantError:
         return False
 
 

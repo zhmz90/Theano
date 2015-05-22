@@ -24,7 +24,7 @@ import theano
 from theano.compile.pfunc import rebuild_collect_shared
 from theano import gof, compat
 from theano import tensor, scalar
-from theano.compat.python2x import all, OrderedDict
+from theano.compat import OrderedDict
 from theano.tensor.basic import get_scalar_constant_value
 
 
@@ -55,9 +55,24 @@ def safe_new(x, tag='', dtype=None):
             return nwx
         else:
             return x.clone()
-
-    # at this point we should only have Variables
-    assert isinstance(x, theano.Variable)
+    # Note, as_tensor_variable will convert the Scalar into a
+    # TensorScalar that will require a ScalarFromTensor op,
+    # making the pushout optimization fail
+    elif isinstance(x, scalar.ScalarVariable):
+        if dtype:
+            nw_x = scalar.get_scalar_type(dtype=dtype)()
+        else:
+            nw_x = x.type()
+        nw_x.name = nw_name
+        return nw_x
+    else:
+        try:
+            x = tensor.as_tensor_variable(x)
+        except TypeError:
+            # This could happen for example for random states, and I really
+            # want to avoid the convoluted logic that checks for cuda
+            # ndarrays
+            pass
     nw_x = x.type()
     if dtype and nw_x.dtype != dtype:
         nw_x = nw_x.astype(dtype).type()
@@ -112,14 +127,23 @@ def traverse(out, x, x_copy, d, visited=None):
     if out in visited:
         return d
     visited.add(out)
-    import theano.sandbox.cuda as cuda
+    from theano.sandbox import cuda, gpuarray
     if out == x:
-        d[out] = cuda.gpu_from_host(x_copy)
+        if isinstance(x.type, cuda.CudaNdarrayType):
+            d[out] = cuda.gpu_from_host(x_copy)
+        else:
+            assert isinstance(x.type, gpuarray.GpuArrayType)
+            d[out] = gpuarray.gpu_from_host(x_copy)
         return d
     elif out.owner is None:
         return d
     elif (cuda.cuda_available and
           out.owner.op == cuda.host_from_gpu and
+          out.owner.inputs == [x]):
+        d[out] = tensor.as_tensor_variable(x_copy)
+        return d
+    elif (gpuarray.pygpu_activated and
+          out.owner.op == gpuarray.host_from_gpu and
           out.owner.inputs == [x]):
         d[out] = tensor.as_tensor_variable(x_copy)
         return d
@@ -145,6 +169,8 @@ def hash_listsDictsTuples(x):
 
 
 DEPRECATED_ARG = object()
+
+
 def clone(output,
           replace=None,
           strict=True,
@@ -168,6 +194,8 @@ def clone(output,
         as the original graph. If False, clone them. Note that cloned
         shared variables still use the same underlying storage, so they
         will always have the same value.
+
+    :param copy_inputs: deprecated, use share_inputs.
     """
     if copy_inputs is not DEPRECATED_ARG:
         warnings.warn('In `clone()` function, the argument `copy_inputs` has been deprecated and renamed into `share_inputs`')
@@ -227,7 +255,7 @@ def get_updates_and_outputs(ls):
     def is_updates(elem):
         if isinstance(elem, dict):
             # Make sure the updates will be applied in a deterministic order
-            if (not isinstance(elem, compat.python2x.OrderedDict) and
+            if (not isinstance(elem, compat.OrderedDict) and
                 len(elem) > 1):
                 warnings.warn("Expected OrderedDict or OrderedUpdates, got "\
                         + str(type(elem)) + ". This can make your script non-"
@@ -401,6 +429,7 @@ def equal_computations(xs, ys, in_xs=None, in_ys=None):
             return False
 
     common = set(zip(in_xs, in_ys))
+    different = set()
     for dx, dy in izip(xs, ys):
         # We checked above that both dx and dy have an owner or not
         if not dx.owner:
@@ -413,16 +442,18 @@ def equal_computations(xs, ys, in_xs=None, in_ys=None):
             elif (dx, dy) not in common and dx != dy:
                 return False
 
-    nds_x = gof.graph.io_toposort(in_xs, xs)
-    nds_y = gof.graph.io_toposort(in_ys, ys)
-    if len(nds_x) != len(nds_y):
-        return False
+    # Explore the two graphs, in parallel, depth first, comparing the nodes
+    # along the way for equality.
+    def compare_nodes(nd_x, nd_y, common, different):
+        ''' Compare two nodes to determine if they perform equal computation.
+        This is done by comparing the ops, the number of inputs, outputs and
+        by ensuring that the inputs themselves are the result of equal
+        computation.
 
-    n_nodes = len(nds_x)
-    idx = 0
-    while idx < n_nodes:
-        nd_x = nds_x[idx]
-        nd_y = nds_y[idx]
+        NOTE : This function relies on the variable common to cache
+        results to be more efficient.
+        '''
+
         if nd_x.op != nd_y.op:
             return False
         elif len(nd_x.inputs) != len(nd_y.inputs):
@@ -430,21 +461,62 @@ def equal_computations(xs, ys, in_xs=None, in_ys=None):
         elif len(nd_x.outputs) != len(nd_y.outputs):
             return False
         else:
+            all_in_common=True
+            for dx, dy in izip(nd_x.outputs, nd_y.outputs):
+                if (dx, dy) in different:
+                    return False
+                if (dx, dy) not in common:
+                    all_in_common = False
+
+            if all_in_common:
+                return True
+
+            # Compare the individual inputs for equality
             for dx, dy in izip(nd_x.inputs, nd_y.inputs):
                 if (dx, dy) not in common:
-                    if dx != dy:
-                        if (isinstance(dx, tensor.Constant) and
-                            isinstance(dy, tensor.Constant)):
-                            if not dx.equals(dy):
-                                return False
-                            else:
-                                pass
-                        else:
+
+                    # Equality between the variables is unknown, compare
+                    # their respective owners, if they have some
+                    if (dx.owner and dy.owner and
+                        dx.owner.outputs.index(dx) ==
+                        dy.owner.outputs.index(dy)):
+
+                        nodes_equal = compare_nodes(dx.owner, dy.owner, common, different)
+                        if not nodes_equal:
+                            different.add((dx, dy))
                             return False
 
+                    # If both variables don't have an owner, then they are
+                    # inputs and can be directly compared
+                    elif dx.owner is None and dy.owner is None:
+
+                        if dx != dy:
+                            if (isinstance(dx, tensor.Constant) and
+                                isinstance(dy, tensor.Constant)):
+                                if not dx.equals(dy):
+                                    return False
+                            else:
+                                return False
+
+                    else:
+                        return False
+
+            # If the code reaches this statement then the inputs are pair-wise
+            # equivalent so the outputs of the current nodes are also
+            # pair-wise equivalents
             for dx, dy in izip(nd_x.outputs, nd_y.outputs):
                 common.add((dx, dy))
-        idx += 1
+
+            return True
+
+    # Validate that each xs[i], ys[i] pair represents the same computation
+    for i in range(len(xs)):
+        if xs[i].owner:
+            # The case where pairs of x[i]s and y[i]s don't both have an owner
+            # have already been adressed.
+            is_equal = compare_nodes(xs[i].owner, ys[i].owner, common, different)
+            if not is_equal:
+                return False
 
     return True
 
@@ -687,14 +759,14 @@ def compress_outs(op, not_required, inputs):
             curr_pos += 1
             info['n_mit_sot'] += 1
             info['tap_array'] += [op.tap_array[offset + idx]]
-            #input taps
+            # input taps
             for jdx in op.tap_array[offset + idx]:
                 op_inputs += [op.inputs[i_offset]]
                 i_offset += 1
-            #output taps
+            # output taps
             op_outputs += [op.outputs[o_offset]]
             o_offset += 1
-            #node inputs
+            # node inputs
             node_inputs += [inputs[ni_offset + idx]]
         else:
             o_offset += 1
@@ -708,13 +780,13 @@ def compress_outs(op, not_required, inputs):
             curr_pos += 1
             info['n_sit_sot'] += 1
             info['tap_array'] += [op.tap_array[offset + idx]]
-            #input taps
+            # input taps
             op_inputs += [op.inputs[i_offset]]
             i_offset += 1
-            #output taps
+            # output taps
             op_outputs += [op.outputs[o_offset]]
             o_offset += 1
-            #node inputs
+            # node inputs
             node_inputs += [inputs[ni_offset + idx]]
         else:
             o_offset += 1

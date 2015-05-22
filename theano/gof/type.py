@@ -13,6 +13,7 @@ from theano.gof import graph
 ########
 from theano.gof.op import CLinkerObject
 
+
 class CLinkerType(CLinkerObject):
     """Interface specification for Types that can be arguments to a `CLinkerOp`.
 
@@ -213,7 +214,6 @@ class CLinkerType(CLinkerObject):
         return ()
 
 
-
 class PureType(object):
     """Interface specification for variable type instances.
 
@@ -226,8 +226,8 @@ class PureType(object):
 
     """
 
-    Variable = graph.Variable #the type that will be created by call to make_variable.
-    Constant = graph.Constant #the type that will be created by call to make_constant
+    Variable = graph.Variable  # the type that will be created by call to make_variable.
+    Constant = graph.Constant  # the type that will be created by call to make_constant
 
     def filter(self, data, strict=False, allow_downcast=None):
         """Required: Return data or an appropriately wrapped/converted data.
@@ -254,7 +254,7 @@ class PureType(object):
     # of this writing this is used only when we transfer new data to a
     # shared variable on the gpu.
 
-    #def filter_inplace(value, storage, strict=False, allow_downcast=None)
+    # def filter_inplace(value, storage, strict=False, allow_downcast=None)
 
     def filter_variable(self, other):
         """Convert a symbolic variable into this Type, if compatible.
@@ -294,7 +294,7 @@ class PureType(object):
         """Optional: return a message explaining the output of is_valid_value"""
         return "none"
 
-    def make_variable(self, name = None):
+    def make_variable(self, name=None):
         """Return a new `Variable` instance of Type `self`.
 
         :Parameters:
@@ -302,7 +302,7 @@ class PureType(object):
             A pretty string for printing and debugging.
 
         """
-        return self.Variable(self, name = name)
+        return self.Variable(self, name=name)
 
     def make_constant(self, value, name=None):
         return self.Constant(type=self, data=value, name=name)
@@ -627,11 +627,13 @@ if (py_%(name)s == NULL) { %(freefunc)s(%(name)s); }
 
 
 class CDataTypeConstant(graph.Constant):
+    def merge_signature(self):
+        # We don't want to merge constants that don't point to the
+        # same object.
+        return id(self.data)
+
     def signature(self):
-        # The Op.c_code* methoss can't access the data, so it can't
-        # change the code depending of it. So there is no need to put
-        # it in the signature. Also, under Python 2, PyCObject aren't
-        # pickable. So using the PyCObject in the signature would
-        # disable the c code cache for op that have it as an input.
+        # There is no way to put the data in the signature, so we
+        # don't even try
         return (self.type,)
 CDataType.Constant = CDataTypeConstant

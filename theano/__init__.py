@@ -41,25 +41,25 @@ from theano.configdefaults import config
 # Version information.
 from theano.version import version as __version__
 
-from theano.gof import \
-    CLinker, OpWiseCLinker, DualLinker, Linker, LocalLinker, PerformLinker, \
-    Container, \
-    InconsistencyError, FunctionGraph, \
-    Apply, Variable, Constant, \
-    Op, OpenMPOp, \
-    opt, \
-    toolbox, \
-    Type, Generic, generic, \
-    object2, utils
+from theano.gof import (
+    CLinker, OpWiseCLinker, DualLinker, Linker, LocalLinker, PerformLinker,
+    Container,
+    InconsistencyError, FunctionGraph,
+    Apply, Variable, Constant,
+    Op, OpenMPOp,
+    opt,
+    toolbox,
+    Type, Generic, generic,
+    object2, utils)
 
-from theano.compile import \
-    SymbolicInput, In, \
-    SymbolicOutput, Out, \
-    Mode, \
-    predefined_modes, predefined_linkers, predefined_optimizers, \
-    FunctionMaker, function, function_dump, OpFromGraph, \
-    ProfileMode, ProfileStats, \
-    Param, shared, as_op
+from theano.compile import (
+    SymbolicInput, In,
+    SymbolicOutput, Out,
+    Mode,
+    predefined_modes, predefined_linkers, predefined_optimizers,
+    FunctionMaker, function, function_dump, OpFromGraph,
+    ProfileMode, ProfileStats,
+    Param, shared, as_op)
 
 from theano.misc.safe_asarray import _asarray
 
@@ -69,11 +69,15 @@ from theano.scan_module import scan, map, reduce, foldl, foldr, clone
 
 from theano.updates import OrderedUpdates
 
-# scan_module import above initializes tensor and scalar making these imports redundant
-#import tensor
-#import scalar
-#we don't import by default as we don't want to force having scipy installed.
-#import sparse
+# scan_module import above initializes tensor and scalar making these imports
+# redundant
+
+# import tensor
+# import scalar
+
+# we don't import by default as we don't want to force having scipy installed.
+
+# import sparse
 
 from theano.gradient import Rop, Lop, grad, subgraph_grad
 
@@ -132,9 +136,7 @@ numpy.seterr(
     invalid=_invalid)
 del _all, _divide, _over, _under, _invalid
 
-## import scalar_opt
-
-### This is defined here because it is designed to work across symbolic
+# This is defined here because it is designed to work across symbolic
 #   datatypes (Sparse and Tensor)
 
 
@@ -146,12 +148,12 @@ def dot(l, r):
     if rval == NotImplemented and hasattr(l, '__dot__'):
         try:
             rval = l.__dot__(r)
-        except Exception, e0:
+        except Exception as e0:
             rval = NotImplemented
     if rval == NotImplemented and hasattr(r, '__rdot__'):
         try:
             rval = r.__rdot__(l)
-        except Exception, e1:
+        except Exception as e1:
             rval = NotImplemented
     if rval == NotImplemented:
         raise NotImplementedError("Dot failed for the following reasons:",

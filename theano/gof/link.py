@@ -1,4 +1,5 @@
 """WRITEME"""
+from __future__ import print_function
 from copy import copy, deepcopy
 from sys import getsizeof
 import StringIO
@@ -23,7 +24,7 @@ def log_thunk_trace(value, f=sys.stderr):
     # in future, consider accepting `write` as arg rather than file
     # to support writing to a logger
     def write(msg):
-        print >> f, "log_thunk_trace: %s" % msg.strip()
+        print("log_thunk_trace: %s" % msg.strip(), file=f)
 
     if hasattr(value, '__thunk_trace__'):
         trace2 = value.__thunk_trace__
@@ -109,13 +110,17 @@ def raise_with_op(node, thunk=None, exc_info=None, storage_map=None):
             trace = ()
     exc_value.__thunk_trace__ = trace
     exc_value.__op_instance__ = node
-    if node in node.fgraph.toposort():
-        exc_value.__applynode_index__ = node.fgraph.toposort().index(node)
+    topo = node.fgraph.toposort()
+    if node in topo:
+        node_index = topo.index(node)
     else:
-        exc_value.__applynode_index__ = None
+        node_index = None
+    exc_value.__applynode_index__ = node_index
 
     hints = []
     detailed_err_msg = "\nApply node that caused the error: " + str(node)
+    if exc_value.__applynode_index__ is not None:
+        detailed_err_msg += "\nToposort index: %d" % node_index
 
     types = [getattr(ipt, 'type', 'No type') for ipt in node.inputs]
     detailed_err_msg += "\nInputs types: %s\n" % types
@@ -136,10 +141,11 @@ def raise_with_op(node, thunk=None, exc_info=None, storage_map=None):
             shapes = "The thunk don't have an inputs attributes."
             strides = "So we can't access the strides of inputs values"
             scalar_values = "And can't print its inputs scalar value"
-
+        clients = [[c[0] for c in var.clients] for var in node.outputs]
         detailed_err_msg += ("Inputs shapes: %s" % shapes +
                              "\nInputs strides: %s" % strides +
-                             "\nInputs values: %s\n" % scalar_values)
+                             "\nInputs values: %s" % scalar_values +
+                             "\nOutputs clients: %s\n" % clients)
     else:
         hints.append(
             "HINT: Use another linker then the c linker to"
@@ -172,34 +178,74 @@ def raise_with_op(node, thunk=None, exc_info=None, storage_map=None):
         # Prints output_map
         if storage_map is not None:
             detailed_err_msg += "\nStorage map footprint:\n"
+            shared_input_list = [
+                item for item in node.fgraph.inputs
+                if isinstance(item, theano.compile.SharedVariable)]
+            nonshared_input_list = [
+                item for item in node.fgraph.inputs
+                if not isinstance(item, theano.compile.SharedVariable)]
+            storage_map_list = []
             for k in storage_map.keys():
-                if storage_map[k][0] is not None:
-                    detailed_err_msg += " - " + str(k) + ", "
-                    shapeinfo = None
-                    if hasattr(storage_map[k][0], 'shape'):
-                        shapeinfo = storage_map[k][0].shape
-                        if len(shapeinfo) != 0:
-                            detailed_err_msg += "Shape: %s, " % str(shapeinfo)
-                        else:
-                            detailed_err_msg += "Shape: (1,), "
-                    if hasattr(storage_map[k][0], 'dtype'):
-                        dtype = storage_map[k][0].dtype
-                        detailed_err_msg += "ElemSize: %s Byte(s)" % numpy.dtype(dtype).itemsize
-                        if shapeinfo is None:
-                            detailed_err_msg += "\n"
-                        else:
-                            detailed_err_msg += ", TotalSize: %s Byte(s)\n" % (numpy.dtype(dtype).itemsize * numpy.prod(shapeinfo))
-                    else:
-                        bytes = getsizeof(storage_map[k][0])
-                        detailed_err_msg += "ElemSize: %s Byte(s)\n" % str(bytes)
+                storage_map_item = []
 
+                # storage_map_item[0]
+                storage_map_item.append(str(k))
+
+                # storage_map_item[1]
+                shapeinfo = None
+                if hasattr(storage_map[k][0], 'shape'):
+                    shapeinfo = storage_map[k][0].shape
+                    if len(shapeinfo) != 0:
+                        storage_map_item.append(shapeinfo)
+                    else:
+                        storage_map_item.append(tuple())
+                else:
+                    storage_map_item.append(None)
+
+                # storage_map_item[2]
+                # storage_map_item[3]
+                if hasattr(storage_map[k][0], 'dtype'):
+                    dtype = storage_map[k][0].dtype
+                    storage_map_item.append(numpy.dtype(dtype).itemsize)
+                    if shapeinfo is None:
+                        storage_map_item.append(None)
+                    else:
+                        storage_map_item.append(numpy.dtype(dtype).itemsize * numpy.prod(shapeinfo))
+                else:
+                    bytes = getsizeof(storage_map[k][0])
+                    storage_map_item.append(bytes)
+                    storage_map_item.append(None)
+
+                # Flag of shared val
+                # storage_map_item[4]
+                if k in shared_input_list:
+                    storage_map_item.append(True)
+                elif k in nonshared_input_list:
+                    storage_map_item.append(False)
+                else:
+                    storage_map_item.append(None)
+                storage_map_list.append(storage_map_item)
+
+            from operator import itemgetter
+            storage_map_list.sort(key=itemgetter(3), reverse=True)
+            for storage_map_item in storage_map_list:
+                detailed_err_msg += " - " + storage_map_item[0] + ", "
+                if storage_map_item[4] is True:
+                    detailed_err_msg += "Shared Input, "
+                elif storage_map_item[4] is False:
+                    detailed_err_msg += "Input, "
+                if storage_map_item[1] is not None:
+                    detailed_err_msg += "Shape: %s, " % str(storage_map_item[1])
+                detailed_err_msg += "ElemSize: %s Byte(s)" % storage_map_item[2]
+                if storage_map_item[3] is not None:
+                    detailed_err_msg += ", TotalSize: %s Byte(s)\n" % storage_map_item[3]
+                else:
+                    detailed_err_msg += "\n"
 
     else:
         hints.append(
             "HINT: Use the Theano flag 'exception_verbosity=high'"
             " for a debugprint and storage map footprint of this apply node.")
-
-
 
     exc_value = exc_type(str(exc_value) + detailed_err_msg +
                          '\n' + '\n'.join(hints))
@@ -262,7 +308,7 @@ class Linker(object):
         def execute(*args):
             def e_arity(takes, got):
                 return 'Function call takes exactly %i %s (%i given)' \
-                        % (takes, ['argument','arguments'][takes>1], got)
+                        % (takes, ['argument', 'arguments'][takes > 1], got)
             if (len(args) != len(inputs)):
                 raise TypeError(e_arity(len(inputs), len(args)))
             for arg, variable in zip(args, inputs):
@@ -283,7 +329,7 @@ class Linker(object):
         return fgraph.toposort()
 
 
-#TODO: Move this class to the compile module, where it is used (and for which it exists).
+# TODO: Move this class to the compile module, where it is used (and for which it exists).
 class Container(object):
     """This class joins a variable with its computed value.
     It is used in linkers, especially for the inputs and outputs of a Function.
@@ -344,7 +390,7 @@ class Container(object):
             else:
                 self.storage[0] = self.type.filter(value, **kwargs)
 
-        except Exception, e:
+        except Exception as e:
             e.args = e.args + (('Container name "%s"' % self.name),)
             raise
     data = property(__get__, __set__)
@@ -401,7 +447,7 @@ def map_storage(fgraph, order, input_storage, output_storage):
     This function also returns `output_storage` which is a list of storages corresponding to fgraph.outputs.
 
     """
-    #each Apply argument's data is stored in a list of length 1 (these lists act like pointers)
+    # each Apply argument's data is stored in a list of length 1 (these lists act like pointers)
 
     # input_storage is a list of data-containers for the inputs.
     if input_storage is None:
@@ -498,7 +544,7 @@ def streamline(fgraph, thunks, order, post_thunk_old_storage=None,
         f = streamline_nice_errors_f
     else:
         # don't worry about raise_with_op, just go a little faster.
-        #there is a mix of python and c thunks
+        # there is a mix of python and c thunks
         def streamline_fast_f():
             for x in no_recycling:
                 x[0] = None
@@ -541,7 +587,7 @@ def gc_helper(node_list):
 
     This is used to allow garbage collection within graphs.
     """
-    #for freeing memory
+    # for freeing memory
     last_user = {}
     computed = set()
     for node in node_list:
@@ -644,7 +690,7 @@ class PerformLinker(LocalLinker):
         f = streamline(fgraph, thunks, order, post_thunk_old_storage,
                        no_recycling=no_recycling)
 
-        f.allow_gc = self.allow_gc #HACK: this is a way of passing an arg to Function.__call__
+        f.allow_gc = self.allow_gc  # HACK: this is a way of passing an arg to Function.__call__
         add_clear_storage(f, computed, storage_map)
         f.storage_map = storage_map
 

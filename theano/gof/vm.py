@@ -10,12 +10,12 @@ import sys
 import time
 import warnings
 
-from theano.compat.python2x import all
-
 from theano.configparser import (config, AddConfigVar,
                                  BoolParam, ConfigParam, _config_var_list)
 
 import theano.gof.cmodule
+
+from theano.compat import defaultdict
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +51,88 @@ AddConfigVar('vm.lazy',
              " Loop/LoopGC and Stack.",
              ConfigParam('None', filter_vm_lazy),
              in_c_key=False)
+
+
+def calculate_reallocate_info(order, fgraph, storage_map, compute_map_re, dependencies):
+    reallocated_info = {}
+    viewed_by = {}
+    for var in fgraph.variables:
+        viewed_by[var] = []
+    view_of = {}
+    pre_allocated = set([])
+    allocated = set([])
+
+    for idx in range(len(order)):
+        node = order[idx]
+        dmap = getattr(node.op, 'destroy_map', None)
+        vmap = getattr(node.op, 'view_map', None)
+
+        idx_o = 0
+        for out in node.outputs:
+            for var in node.outputs:
+                compute_map_re[var][0] = 1
+            ins = None
+            if dmap and idx_o in dmap:
+                idx_v = dmap[idx_o]
+                assert len(
+                    idx_v) == 1, "Here we only support the possibility to destroy one input"
+                ins = node.inputs[idx_v[0]]
+            if vmap and idx_o in vmap:
+                assert ins is None
+                idx_v = vmap[idx_o]
+                assert len(
+                    idx_v) == 1, "Here we only support the possibility to view one input"
+                ins = node.inputs[idx_v[0]]
+            if ins is not None:
+                assert isinstance(ins, theano.Variable)
+                origin = view_of.get(ins, ins)
+                view_of[out] = origin
+                viewed_by[origin].append(out)
+            idx_o += 1
+
+        for ins in node.inputs:
+            assert not (ins in view_of and viewed_by[ins])
+            if (getattr(ins, 'ndim', None) == 0 and not storage_map[ins][0]
+                    and ins not in fgraph.outputs and ins.owner
+                    and all([compute_map_re[v][0] for v in dependencies.get(ins, [])])
+                    and ins not in allocated):
+                # Constant Memory cannot be changed
+                # Constant and shared variables' storage_map value is not empty
+                reuse_out = None
+                if ins not in view_of and not viewed_by.get(ins, []):
+                    # where gc
+                    for i in range(idx + 1, len(order)):
+                        if reuse_out:
+                            break
+                        for out in order[i].outputs:
+                            if (getattr(out, 'ndim', None) == 0 and out not in pre_allocated
+                                    and ins.type == out.type):
+                                reuse_out = out
+                                pre_allocated.add(out)
+                                allocated.add(ins)
+                elif ins in view_of:
+                    origin = view_of[ins]
+                    if ins in viewed_by[origin]:
+                        viewed_by[origin].remove(ins)
+                    if (not viewed_by[origin] and
+                            origin not in fgraph.inputs and
+                            not isinstance(origin, theano.Constant)):
+                        # where gc
+                        for i in range(idx + 1, len(order)):
+                            if reuse_out:
+                                break
+                            for out in order[i].outputs:
+                                if (getattr(out, 'ndim', None) == 0 and out not in pre_allocated
+                                        and ins.type == out.type):
+                                    reuse_out = out
+                                    pre_allocated.add(out)
+                                    allocated.add(ins)
+
+                if reuse_out:
+                    reallocated_info[ins] = [ins, reuse_out]
+
+    return reallocated_info
+
 
 class VM(object):
 
@@ -149,7 +231,7 @@ class VM(object):
             profile.node_cleared_order = self.node_cleared_order[:]
 
         if hasattr(self, 'dependencies'):
-            profile.dependencies = self.dependencies.copy()
+            profile.dependencies = self.dependencies
 
         # clear the timer info out of the buffers
         for i in xrange(len(self.call_times)):
@@ -163,6 +245,8 @@ class Loop(VM):
     Unconditional start-to-finish program execution in Python.
     No garbage collection is allowed on intermediate results.
     """
+    # Some other part of Theano query that information
+    allow_gc = False
 
     def __call__(self):
         if self.time_thunks:
@@ -198,6 +282,8 @@ class LoopGC(VM):
     def __init__(self, nodes, thunks, pre_call_clear, post_thunk_clear):
         super(LoopGC, self).__init__(nodes, thunks, pre_call_clear)
         self.post_thunk_clear = post_thunk_clear
+        # Some other part of Theano query that information
+        self.allow_gc = True
         if not (len(nodes) == len(thunks) == len(post_thunk_clear)):
             raise ValueError()
 
@@ -447,7 +533,7 @@ class Stack(VM):
                                     # DO NOT set compute_map to 0
 
                                     # If values become False and the
-                                    #current_apply is still in the
+                                    # current_apply is still in the
                                     # stack, this will cause it to be
                                     # recomputed! This can cause wrong value
                                     # with some combination of inplace op.
@@ -494,7 +580,7 @@ class Stack(VM):
                 except Exception:
                     link.raise_with_op(current_apply,
                                        self.thunks[self.node_idx[current_apply]],
-                                       storage_map)
+                                       storage_map=storage_map)
 
                 if requires:
                     for r in requires:
@@ -574,7 +660,7 @@ try:
             # skip VM.__init__
 except ImportError:
     pass
-except (OSError, theano.gof.cmodule.MissingGXX), e:
+except (OSError, theano.gof.cmodule.MissingGXX) as e:
     # OSError happens when g++ is not installed.  In that case, we
     # already changed the default linker to something else then CVM.
     # Currently this is the py linker.
@@ -714,7 +800,7 @@ class VM_Linker(link.LocalLinker):
                 post_thunk_clear,
                 computed,
                 compute_map,
-                updated_vars
+                updated_vars,
                 ):
 
         pre_call_clear = [storage_map[v] for v in self.no_recycling]
@@ -727,7 +813,7 @@ class VM_Linker(link.LocalLinker):
             if self.use_cloop and config.profile_memory:
                 warnings.warn(
                     'CVM does not support memory profile, using Stack VM.')
-            # Needed when allow_gc=True and profiling
+            # Needed for allow_gc=True, profiling and storage_map reuse
             deps = self.compute_gc_dependencies(storage_map)
             vm = Stack(
                 nodes, thunks, pre_call_clear,
@@ -763,7 +849,7 @@ class VM_Linker(link.LocalLinker):
                 assert type(storage_map_list[0]) is list
                 assert type(compute_map_list[0]) is list
 
-            # Needed when allow_gc=True and profiling
+            # Needed for allow_gc=True, profiling and storage_map reuse
             dependency_map = self.compute_gc_dependencies(storage_map)
             dependency_map_list = [
                 [vars_idx[d] for d in dependency_map[vars_idx_inv[i]]]
@@ -858,12 +944,14 @@ class VM_Linker(link.LocalLinker):
                         nodes,
                         thunks,
                         pre_call_clear,
-                        post_thunk_clear)
+                        post_thunk_clear,
+                    )
                 else:
                     vm = Loop(
                         nodes,
                         thunks,
-                        pre_call_clear)
+                        pre_call_clear,
+                    )
             else:
                 # Needed when allow_gc=True and profiling
                 deps = self.compute_gc_dependencies(storage_map)
@@ -889,6 +977,19 @@ class VM_Linker(link.LocalLinker):
             compute_map[k] = [k.owner is None]
 
         thunks = []
+
+        # Collect Reallocation Info
+        compute_map_re = defaultdict(lambda: [0])
+        for var in fgraph.inputs:
+            compute_map_re[var][0] = 1
+
+        if getattr(fgraph.profile, 'dependencies', None):
+            dependencies = getattr(fgraph.profile, 'dependencies')
+        else:
+            dependencies = self.compute_gc_dependencies(storage_map)
+
+        reallocated_info = calculate_reallocate_info(order, fgraph, storage_map, compute_map_re,dependencies)
+
         for node in order:
             try:
                 thunks.append(node.op.make_thunk(node,
@@ -900,13 +1001,22 @@ class VM_Linker(link.LocalLinker):
                     # So if they didn't specify that its lazy or not, it isn't.
                     # If this member isn't present, it will crash later.
                     thunks[-1].lazy = False
-            except Exception, e:
+            except Exception as e:
                 e.args = ("The following error happened while"
                           " compiling the node", node, "\n") + e.args
                 raise
         for node, thunk in zip(order, thunks):
             thunk.inputs = [storage_map[v] for v in node.inputs]
             thunk.outputs = [storage_map[v] for v in node.outputs]
+
+        lazy = self.lazy
+        if lazy is None:
+            lazy = config.vm.lazy
+        if lazy is None:
+            lazy = not all([(not th.lazy) for th in thunks])
+        if not (lazy or (config.profile and config.profile_memory) or self.use_cloop or self.callback):
+            for pair in reallocated_info.values():
+                storage_map[pair[1]] = storage_map[pair[0]]
 
         computed, last_user = link.gc_helper(order)
         if self.allow_gc:
@@ -916,7 +1026,8 @@ class VM_Linker(link.LocalLinker):
                 for input in node.inputs:
                     if ((input in computed)
                             and (input not in fgraph.outputs)
-                            and (node == last_user[input])):
+                            and (node == last_user[input])
+                            and input not in reallocated_info.keys()):
                         clear_after_this_thunk.append(storage_map[input])
                 post_thunk_clear.append(clear_after_this_thunk)
         else:
@@ -927,7 +1038,7 @@ class VM_Linker(link.LocalLinker):
                           post_thunk_clear,
                           computed,
                           compute_map,
-                          self.updated_vars
+                          self.updated_vars,
                           )
 
         vm.storage_map = storage_map

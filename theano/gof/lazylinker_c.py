@@ -42,7 +42,7 @@ try:
         try:
             # Try to make the location
             os.mkdir(location)
-        except OSError, e:
+        except OSError as e:
             # If we get an error, verify that the error was # 17, the path already exists,
             # and that it is a directory
             # Note: we can't check if it exists before making it, because we are not holding
@@ -51,8 +51,17 @@ try:
             assert e.errno == errno.EEXIST
             assert os.path.isdir(location)
 
-    if not os.path.exists(os.path.join(location, '__init__.py')):
-        open(os.path.join(location, '__init__.py'), 'w').close()
+    init_file = os.path.join(location, '__init__.py')
+    if not os.path.exists(init_file):
+        try:
+            open(init_file, 'w').close()
+        except IOError as e:
+            if os.path.exists(init_file):
+                pass  # has already been created
+            else:
+                e.args += ('%s exist? %s' % (location,
+                                             os.path.exists(location)),)
+                raise
 
     _need_reload = False
     if force_compile:
@@ -107,7 +116,7 @@ except ImportError:
             if not os.path.exists(loc):
                 try:
                     os.mkdir(loc)
-                except OSError, e:
+                except OSError as e:
                     assert e.errno == errno.EEXIST
                     assert os.path.exists(loc)
 

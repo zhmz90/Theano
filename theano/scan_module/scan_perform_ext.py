@@ -16,7 +16,7 @@ from theano.gof import cmodule
 _logger = logging.getLogger('theano.scan_module.scan_perform')
 
 
-version = 0.285  # must match constant returned in function get_version()
+version = 0.286  # must match constant returned in function get_version()
 
 need_reload = False
 
@@ -80,7 +80,7 @@ except ImportError:
             if not os.path.exists(loc):
                 try:
                     os.mkdir(loc)
-                except OSError, e:
+                except OSError as e:
                     assert e.errno == errno.EEXIST
                     assert os.path.exists(loc)
 
@@ -91,7 +91,7 @@ except ImportError:
             # by Theano. As by default, we tell NumPy to don't import
             # the old interface.
             if False:
-                #During scan cython development, it is helpful to keep the old interface, to don't manually edit the c file each time.
+                # During scan cython development, it is helpful to keep the old interface, to don't manually edit the c file each time.
                 preargs.remove('-D NPY_NO_DEPRECATED_API=NPY_1_7_API_VERSION')
             else:
                 numpy_ver = [int(n) for n in numpy.__version__.split('.')[:2]]

@@ -21,7 +21,7 @@ class SharedVariable(Variable):
 
     """
 
-    #Container object
+    # Container object
     container = None
     """
     A container to use for this SharedVariable when it is an implicit
@@ -216,7 +216,7 @@ def shared(value, name=None, strict=False, allow_downcast=None, **kwargs):
             # This was done on purpose, the rationale being that if kwargs
             # were supplied, the user didn't want them to be ignored.
 
-    except MemoryError, e:
+    except MemoryError as e:
         e.args = e.args + ('you might consider'
                            ' using \'theano.shared(..., borrow=True)\'',)
         raise

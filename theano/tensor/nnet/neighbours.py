@@ -455,6 +455,7 @@ def images2neibs(ten4, neib_shape, neib_step=None, mode='valid'):
                       `neib_shape`, some elements are omitted. When None, this
                       is the same as
                       neib_shape(patch are disjoint)
+
                       .. note:: Currently the step size should be chosen in the way that the 
                          corresponding dimension :math:`i` (width or height) is equal to 
                          :math:`n * step\_size_i + neib\_shape_i` for some :math:`n`
@@ -572,7 +573,7 @@ def neibs2images(neibs, neib_shape, original_shape, mode='valid'):
         valid_shape[2] = (valid_shape[2] // neib_shape[0]) * neib_shape[0]
         valid_shape[3] = (valid_shape[3] // neib_shape[1]) * neib_shape[1]
         output_4d = output_2d.reshape(valid_shape)
-        #padding the borders with zeros
+        # padding the borders with zeros
         for d in [2, 3]:
             pad_shape = list(output_4d.shape)
             pad_shape[d] = original_shape[d] - valid_shape[d]

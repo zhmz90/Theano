@@ -1,3 +1,4 @@
+from __future__ import print_function
 from theano import Op, Apply
 from theano.compat.six import StringIO
 
@@ -26,7 +27,7 @@ class GpuCrossentropySoftmaxArgmax1HotWithBias(GpuOp):
         return self.__class__.__name__
 
     def make_node(self, x, b, y_idx):
-        #N.B. won't work when we don't cast y_idx to float anymore
+        # N.B. won't work when we don't cast y_idx to float anymore
         x = as_cuda_ndarray_variable(x)
         b = as_cuda_ndarray_variable(b)
         y_idx = as_cuda_ndarray_variable(y_idx)
@@ -98,7 +99,7 @@ class GpuCrossentropySoftmaxArgmax1HotWithBias(GpuOp):
         classname = self.__class__.__name__
         fail = sub['fail']
         sio = StringIO()
-        print >> sio, """
+        print("""
         if (CudaNdarray_NDIM(%(y_idx)s) != 1)
         {
             PyErr_SetString(PyExc_ValueError, "y_idx not 1d tensor");
@@ -210,11 +211,11 @@ class GpuCrossentropySoftmaxArgmax1HotWithBias(GpuOp):
                 %(fail)s;
             }
         }
-        """ % locals()
+        """ % locals(), file=sio)
         return sio.getvalue()
 
     def c_code_cache_version(self):
-        #return ()
+        # return ()
         return (4,)
 
 gpu_crossentropy_softmax_argmax_1hot_with_bias = GpuCrossentropySoftmaxArgmax1HotWithBias()
@@ -246,35 +247,53 @@ class GpuCrossentropySoftmax1HotWithBiasDx(GpuOp):
         return Apply(self, [dy, sm, y_idx], [sm.type()])
 
     def c_code_cache_version(self):
-        #return ()
-        return (6,)
+        # return ()
+        return (8,)
 
     def c_code(self, node, nodename, inp, out, sub):
         dnll, sm, y_idx = inp
         dx, = out
         fail = sub['fail']
         return """
-        if ((CudaNdarray_NDIM(%(dnll)s) != 1)
+        // Get `dnll.shape[0]` or set it to zero if `dnll` is a scalar.
+        const npy_intp %(dnll)s_dims0 = (CudaNdarray_NDIM(%(dnll)s) > 0 ?
+                                         CudaNdarray_HOST_DIMS(%(dnll)s)[0] :
+                                         (npy_intp) 0);
+
+        // Get `dnll.strides[0]` and set it to zero if `dnll` is a scalar
+        // or a vector with just one element.
+        const npy_intp %(dnll)s_strides0 = (%(dnll)s_dims0 > 1 ?
+                                            CudaNdarray_HOST_STRIDES(%(dnll)s)[0] :
+                                            (npy_intp) 0);
+
+        if ((CudaNdarray_NDIM(%(dnll)s) > 1)
             || (CudaNdarray_NDIM(%(sm)s) != 2)
             || (CudaNdarray_NDIM(%(y_idx)s) != 1))
         {
             PyErr_SetString(PyExc_ValueError, "rank error");
             %(fail)s;
         }
-        if (CudaNdarray_HOST_DIMS(%(dnll)s)[0] !=
-            CudaNdarray_HOST_DIMS(%(sm)s)[0])
+        if (%(dnll)s_dims0 !=
+            CudaNdarray_HOST_DIMS(%(sm)s)[0] && %(dnll)s_dims0 > 1)
         {
             PyErr_Format(PyExc_ValueError,
                          "dnll.shape[0] == %%i, but sm.shape[0] == %%i",
-                         CudaNdarray_HOST_DIMS(%(dnll)s)[0],
+                         %(dnll)s_dims0,
                          CudaNdarray_HOST_DIMS(%(sm)s)[0]);
             %(fail)s;
         }
-        if (CudaNdarray_HOST_DIMS(%(dnll)s)[0] !=
-            CudaNdarray_HOST_DIMS(%(y_idx)s)[0])
+        if (%(dnll)s_dims0 !=
+            CudaNdarray_HOST_DIMS(%(y_idx)s)[0] && %(dnll)s_dims0 > 1)
         {
             PyErr_SetString(PyExc_ValueError,
                             "dnll.shape[0] != y_idx.shape[0]");
+            %(fail)s;
+        }
+        if (CudaNdarray_HOST_DIMS(%(sm)s)[0] !=
+            CudaNdarray_HOST_DIMS(%(y_idx)s)[0])
+        {
+            PyErr_SetString(PyExc_ValueError,
+                            "sm.shape[0] != y_idx.shape[0]");
             %(fail)s;
         }
         if ((NULL == %(dx)s)
@@ -305,7 +324,7 @@ class GpuCrossentropySoftmax1HotWithBiasDx(GpuOp):
                         CudaNdarray_HOST_DIMS(%(dx)s)[1],
 
                         CudaNdarray_DEV_DATA(%(dnll)s),
-                        CudaNdarray_HOST_STRIDES(%(dnll)s)[0],
+                        %(dnll)s_strides0,
 
                         CudaNdarray_DEV_DATA(%(sm)s),
                         CudaNdarray_HOST_STRIDES(%(sm)s)[0],
@@ -557,7 +576,7 @@ class GpuSoftmaxWithBias(GpuOp):
         return [shape[0]]
 
     def c_code_cache_version(self):
-        #return ()
+        # return ()
         return (9,) + inline_softmax.code_version
 
     def c_code(self, node, nodename, inp, out, sub):

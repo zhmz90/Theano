@@ -5,6 +5,7 @@ To read about what theano graphs are from a user perspective, have a look at
 `graph.html <../doc/graph.html>`__.
 
 """
+from __future__ import print_function
 
 __docformat__ = "restructuredtext en"
 
@@ -16,7 +17,7 @@ from itertools import count
 import theano
 import warnings
 from theano.gof import utils
-from theano.compat.python2x import any, deque
+from theano.compat import deque
 from theano.misc.ordered_set import OrderedSet
 
 # Lazy imports to avoid circular dependencies.
@@ -24,6 +25,7 @@ is_same_graph_with_merge = None
 equal_computations = None
 
 NoContext = object()
+
 
 class Node(utils.object2):
     """A Node in a theano graph.
@@ -98,14 +100,14 @@ class Apply(Node):
         if not isinstance(outputs, (list, tuple)):
             raise TypeError("The output of an Apply must be a list or tuple")
 
-        ## filter inputs to make sure each element is a Variable
+        # filter inputs to make sure each element is a Variable
         for input in inputs:
             if isinstance(input, Variable):
                 self.inputs.append(input)
             else:
                 raise TypeError("The 'inputs' argument to Apply must contain Variable instances, not %s" % input)
         self.outputs = []
-        ## filter outputs to make sure each element is a Variable
+        # filter outputs to make sure each element is a Variable
         for i, output in enumerate(outputs):
             if isinstance(output, Variable):
                 if output.owner is None:
@@ -222,7 +224,7 @@ class Apply(Node):
     def get_parents(self):
         return list(self.inputs)
 
-    #convenience properties
+    # convenience properties
     nin = property(lambda self: len(self.inputs), doc='same as len(self.inputs)')
     """property: Number of inputs"""
 
@@ -369,7 +371,7 @@ class Variable(Node):
         :note: tags are copied to the returned instance.
         :note: name is copied to the returned instance.
         """
-        #return copy(self)
+        # return copy(self)
         cp = self.__class__(self.type, None, None, self.name)
         cp.tag = copy(self.tag)
         return cp
@@ -448,6 +450,9 @@ class Constant(Variable):
 
     def signature(self):
         return (self.type, self.data)
+
+    def merge_signature(self):
+        return self.signature()
 
     def __str__(self):
         if self.name is not None:
@@ -712,7 +717,8 @@ def clone_get_equiv(inputs, outputs,
     return memo
 
 
-def general_toposort(r_out, deps, debug_print=False):
+def general_toposort(r_out, deps, debug_print=False,
+                     compute_deps_cache=None, deps_cache=None):
     """WRITEME
 
     :note:
@@ -723,26 +729,44 @@ def general_toposort(r_out, deps, debug_print=False):
 
     :note:
         The order of the return value list is determined by the order of nodes returned by the deps() function.
-    """
-    deps_cache = {}
 
-    def _deps(io):
-        if io not in deps_cache:
-            d = deps(io)
-            if d:
-                if not isinstance(d, (list, OrderedSet)):
-                    raise TypeError("Non-deterministic collections here make"
+    :param deps: a python function that take a node as input and
+        return its dependence.
+    :param compute_deps_cache: Optional,
+        if provided deps_cache should also be provided. This is a
+        function like deps, but that also cache its results in a dict
+        passed as deps_cache.
+    :param deps_cache: a dict. Must be used with compute_deps_cache.
+
+    :note: deps should be provided or can be None and the caller
+        provide compute_deps_cache and deps_cache. The second option
+        remove a Python function call, and allow for more specialized
+        code, so it can be faster.
+
+    """
+    if compute_deps_cache is None:
+        deps_cache = {}
+
+        def compute_deps_cache(io):
+            if io not in deps_cache:
+                d = deps(io)
+                if d:
+                    if not isinstance(d, (list, OrderedSet)):
+                        raise TypeError(
+                            "Non-deterministic collections here make"
                             " toposort non-deterministic.")
-                deps_cache[io] = list(d)
+                    deps_cache[io] = list(d)
+                else:
+                    deps_cache[io] = d
+                return d
             else:
-                deps_cache[io] = d
-            return d
-        else:
-            return deps_cache[io]
+                return deps_cache[io]
+    assert deps_cache is not None
 
     assert isinstance(r_out, (tuple, list, deque))
 
-    reachable, clients = stack_search(deque(r_out), _deps, 'dfs', True)
+    reachable, clients = stack_search(deque(r_out), compute_deps_cache,
+                                      'dfs', True)
     sources = deque([r for r in reachable if not deps_cache.get(r, None)])
 
     rset = set()
@@ -759,9 +783,9 @@ def general_toposort(r_out, deps, debug_print=False):
 
     if len(rlist) != len(reachable):
         if debug_print:
-            print ''
-            print reachable
-            print rlist
+            print('')
+            print(reachable)
+            print(rlist)
         raise ValueError('graph contains cycles')
 
     return rlist
@@ -782,26 +806,55 @@ def io_toposort(inputs, outputs, orderings=None):
                 order. no sets allowed!
 
     """
-    if orderings is None:
-        orderings = {}
-
-    #the inputs are used only here in the function that decides what 'predecessors' to explore
+    # the inputs are used only here in the function that decides what 'predecessors' to explore
     iset = set(inputs)
 
-    def deps(obj):
-        rval = []
-        if obj not in iset:
-            if isinstance(obj, Variable):
-                if obj.owner:
-                    rval = [obj.owner]
-            elif isinstance(obj, Apply):
-                rval = list(obj.inputs)
-            rval.extend(orderings.get(obj, []))
-        else:
-            assert not orderings.get(obj, [])
-        return rval
+    # We build 2 functions as a speed up
+    deps_cache = {}
 
-    topo = general_toposort(outputs, deps)
+    compute_deps = None
+    compute_deps_cache = None
+    if not orderings:  # can be None or empty dict
+        # Specialized function that is faster when no ordering.
+        # Also include the cache in the function itself for speed up.
+        def compute_deps_cache(obj):
+            if obj in deps_cache:
+                return deps_cache[io]
+            rval = []
+            if obj not in iset:
+                if isinstance(obj, Variable):
+                    if obj.owner:
+                        rval = [obj.owner]
+                elif isinstance(obj, Apply):
+                    rval = list(obj.inputs)
+                if rval:
+                    if not isinstance(rval, (list, OrderedSet)):
+                        raise TypeError(
+                            "Non-deterministic collections here make"
+                            " toposort non-deterministic.")
+                    deps_cache[obj] = list(rval)
+                else:
+                    deps_cache[obj] = rval
+            else:
+                deps_cache[obj] = rval
+            return rval
+    else:
+        def compute_deps(obj):
+            rval = []
+            if obj not in iset:
+                if isinstance(obj, Variable):
+                    if obj.owner:
+                        rval = [obj.owner]
+                elif isinstance(obj, Apply):
+                    rval = list(obj.inputs)
+                rval.extend(orderings.get(obj, []))
+            else:
+                assert not orderings.get(obj, [])
+            return rval
+
+    topo = general_toposort(outputs, deps=compute_deps,
+                            compute_deps_cache=compute_deps_cache,
+                            deps_cache=deps_cache)
     return [o for o in topo if isinstance(o, Apply)]
 
 

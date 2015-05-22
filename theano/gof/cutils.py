@@ -5,7 +5,7 @@ import sys
 from theano.compat import PY3
 from theano.gof.compilelock import get_lock, release_lock
 from theano import config
-import cmodule 
+import cmodule
 
 # TODO These two lines may be removed in the future, when we are 100% sure
 # noone has an old cutils_ext.so lying around anymore.
@@ -182,6 +182,7 @@ fail:
 
     return code
 
+
 def compile_cutils():
     """Do just the compilation of cutils_ext"""
     code = ("""
@@ -257,7 +258,7 @@ def compile_cutils():
     if not os.path.exists(loc):
         try:
             os.mkdir(loc)
-        except OSError, e:
+        except OSError as e:
             assert e.errno == errno.EEXIST
             assert os.path.exists(loc), loc
 
@@ -277,7 +278,7 @@ try:
     if not os.path.exists(location):
         try:
             os.mkdir(location)
-        except OSError, e:
+        except OSError as e:
             assert e.errno == errno.EEXIST
             assert os.path.exists(location), location
     if not os.path.exists(os.path.join(location, '__init__.py')):

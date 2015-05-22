@@ -1,14 +1,12 @@
 """
 Test flake8 errors.
 """
-__authors__ = ("Saizheng Zhang")
-__copyright__ = "(c) 2015, Universite de Montreal"
-__contact__ = "Saizheng Zhang <saizhenglisa..at..gmail.com>"
 
 from nose.plugins.skip import SkipTest
 import os
 from fnmatch import fnmatch
 import theano
+from theano.compat import PY3
 try:
     import flake8.engine
     import flake8.main
@@ -16,18 +14,13 @@ try:
 except ImportError:
     flake8_available = False
 
+__authors__ = ("Saizheng Zhang")
+__copyright__ = "(c) 2015, Universite de Montreal"
+__contact__ = "Saizheng Zhang <saizhenglisa..at..gmail.com>"
+
 whitelist_flake8 = [
-    "updates.py",
-    "printing.py",
     "__init__.py",
-    "configparser.py",
-    "ifelse.py",
     "version.py",
-    "configdefaults.py",
-    "gradient.py",
-    "compat/python2x.py",
-    "compat/six.py",
-    "compat/__init__.py",
     "tests/test_gradient.py",
     "tests/test_config.py",
     "tests/diverse_tests.py",
@@ -63,8 +56,6 @@ whitelist_flake8 = [
     "compile/tests/test_builders.py",
     "compile/tests/test_misc.py",
     "compile/tests/test_monitormode.py",
-    "compile/tests/test_modes.py",
-    "compile/tests/test_mode.py",
     "compile/tests/test_function_module.py",
     "compile/tests/test_inplace_opt_for_value.py",
     "compile/tests/test_shared.py",
@@ -161,7 +152,6 @@ whitelist_flake8 = [
     "scalar/__init__.py",
     "scalar/basic.py",
     "scalar/tests/test_basic.py",
-    "scalar/tests/test_basic_sympy.py",
     "sandbox/test_theano_object.py",
     "sandbox/test_scan.py",
     "sandbox/rng_mrg.py",
@@ -238,7 +228,6 @@ whitelist_flake8 = [
     "sandbox/gpuarray/elemwise.py",
     "sandbox/gpuarray/type.py",
     "sandbox/gpuarray/__init__.py",
-    "sandbox/gpuarray/opt.py",
     "sandbox/gpuarray/blas.py",
     "sandbox/gpuarray/kernel_codegen.py",
     "sandbox/gpuarray/conv.py",
@@ -265,12 +254,9 @@ whitelist_flake8 = [
     "misc/elemwise_openmp_speedup.py",
     "misc/gh_api.py",
     "misc/check_blas.py",
-    "misc/cpucount.py",
     "misc/latence_gpu_transfert.py",
-    "misc/elemwise_time_test.py",
     "misc/cudamat_utils.py",
     "misc/pycuda_utils.py",
-    "misc/doubleop.py",
     "misc/pycuda_example.py",
     "misc/ordered_set.py",
     "misc/windows.py",
@@ -327,20 +313,18 @@ whitelist_flake8 = [
     "gof/tests/test_destroyhandler.py",
     "gof/tests/test_opt.py",
     "gof/tests/test_lazy.py",
-    "gof/tests/test_vm.py",
     "gof/tests/test_toolbox.py",
     "gof/tests/test_link.py",
     "gof/tests/test_fg.py",
     "gof/tests/test_sched.py",
-    "gof/tests/test_op.py",
     "gof/tests/test_graph_opt_caching.py",
     "gof/tests/test_graph.py",
     "gof/tests/test_cc.py",
     "gof/tests/test_compute_test_value.py",
     "gof/sandbox/equilibrium.py",
-    "generated_version.py",
     "sandbox/cuda/opt_util.py",
     "gof/tests/test_utils.py",
+    "tensor/tests/_test_mpi_roundtrip.py",
 ]
 
 
@@ -363,6 +347,8 @@ def test_format_flake8():
     """
     if not flake8_available:
         raise SkipTest("flake8 is not installed")
+    if PY3:
+        raise SkipTest("not testing in python3 since 2to3 ran")
     total_errors = 0
     for path in list_files():
         rel_path = os.path.relpath(path, theano.__path__[0])

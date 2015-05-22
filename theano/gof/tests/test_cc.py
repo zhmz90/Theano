@@ -1,3 +1,4 @@
+from __future__ import print_function
 
 import unittest
 
@@ -112,7 +113,7 @@ class MyOp(Op):
         return ()
 
 
-#class Unary(MyOp):
+# class Unary(MyOp):
 #    def __init__(self):
 #        MyOp.__init__(self, 1, self.__class__.__name__)
 
@@ -202,8 +203,8 @@ def test_clinker_literal_inlining():
     fn = lnk.make_function()
     assert abs(fn(2.0, 2.0) + 0.12345678) < 1e-9
     code = lnk.code_gen()
-    #print "=== Code generated ==="
-    #print code
+    # print "=== Code generated ==="
+    # print code
     assert "4.12345678" in code  # we expect the number to be inlined
 
 
@@ -325,7 +326,7 @@ def test_duallinker_mismatch():
         # are the same.
         res = fn(1.0, 2.0, 3.0)
         raise Exception("An exception should have been raised here!")
-    except MyExc, e:
+    except MyExc as e:
         pass
 
 
@@ -358,6 +359,6 @@ def test_c_fail_error():
     try:
         res = fn(1.5, 3.0)
     except RuntimeError:
-        print 'Yay, TEST PASSED'
+        print('Yay, TEST PASSED')
         return  # test passed
     assert 0  # test failed

@@ -1,18 +1,14 @@
+from __future__ import print_function
 import gc
 import sys
 import time
 import unittest
-try:
-    import line_profiler
-except ImportError:
-    pass
 
 from nose.plugins.skip import SkipTest
 import numpy
 
 from theano import function
 from theano.gof import vm
-from theano.gof import link
 from theano.gof import OpWiseCLinker
 from theano.compile import Mode
 
@@ -36,14 +32,15 @@ class TestCallbacks(unittest.TestCase):
     def test_callback(self):
         a, b, c = tensor.scalars('abc')
         f = function([a, b, c], (a + b) + c,
-                mode=Mode(
-                    optimizer=None,
-                    linker=vm.VM_Linker(callback=self.callback)))
+                     mode=Mode(
+                         optimizer=None,
+                         linker=vm.VM_Linker(callback=self.callback)))
 
         f(1, 2, 3)
         assert sum(self.n_callbacks.values()) == len(f.maker.fgraph.toposort())
         f(1, 2, 3)
-        assert sum(self.n_callbacks.values()) == len(f.maker.fgraph.toposort()) * 2
+        assert (sum(self.n_callbacks.values()) ==
+                len(f.maker.fgraph.toposort()) * 2)
 
     def test_callback_with_ifelse(self):
         a, b, c = tensor.scalars('abc')
@@ -87,9 +84,9 @@ def test_speed():
         t_a = t1 - t0
         t_b = t3 - t2
 
-        print "%s takes %f s/Kop" % (
-                'numpy',
-                (1000*(t_b-t_a) / (steps_b - steps_a)))
+        print("%s takes %f s/Kop" % (
+            'numpy',
+            (1000 * (t_b - t_a) / (steps_b - steps_a))))
 
     def time_linker(name, linker):
         steps_a = 5
@@ -99,13 +96,9 @@ def test_speed():
         b = build_graph(x, steps_b)
 
         f_a = function([x], a,
-                       mode=Mode(optimizer=None, linker=linker()),
-                       #profile='f_a speed test %s'%name,
-        )
+                       mode=Mode(optimizer=None, linker=linker()))
         f_b = function([x], b,
-                       mode=Mode(optimizer=None, linker=linker()),
-                       #profile='f_b speed test %s'%name,
-        )
+                       mode=Mode(optimizer=None, linker=linker()))
 
         f_a([2.0, 3.0])
         t0 = time.time()
@@ -121,9 +114,9 @@ def test_speed():
         t_a = t1 - t0
         t_b = t3 - t2
 
-        print "%s takes %f s/Kop" % (
+        print("%s takes %f s/Kop" % (
             name,
-            (1000*(t_b-t_a) / (steps_b - steps_a)))
+            (1000*(t_b-t_a) / (steps_b - steps_a))))
 
     time_linker('c|py', OpWiseCLinker)
     time_linker('vmLinker', vm.VM_Linker)
@@ -151,14 +144,10 @@ def test_speed_lazy():
 
         f_a = function([x], a,
                        mode=Mode(optimizer=None,
-                                 linker=linker()),
-                       #profile='f_a lazy ifelse %s'%name,
-        )
+                                 linker=linker()))
         f_b = function([x], b,
                        mode=Mode(optimizer=None,
-                                 linker=linker()),
-                       #profile='f_b lazy ifelse %s'%name,
-        )
+                                 linker=linker()))
 
         f_a([2.0])
         t0 = time.time()
@@ -174,9 +163,9 @@ def test_speed_lazy():
         t_a = t1 - t0
         t_b = t3 - t2
 
-        print "%s takes %f s/Kop" % (
-                name,
-                (1000*(t_b-t_a) / (steps_b - steps_a)))
+        print("%s takes %f s/Kop" % (
+            name,
+            (1000*(t_b-t_a) / (steps_b - steps_a))))
 
     time_linker('vmLinker', vm.VM_Linker)
     time_linker('vmLinker_nogc', lambda: vm.VM_Linker(allow_gc=False))
@@ -220,10 +209,11 @@ if run_memory_usage_tests:
             c = sys.getrefcount(n)
             a = cuda.CudaNdarray(n)
             assert c == sys.getrefcount(n)
+            del a
             if not i % 1000:
-                print '.',
-                print gc.collect(),
-                print gc.collect()
+                print('.', end=' ')
+                print(gc.collect(), end=' ')
+                print(gc.collect())
             sys.stdout.flush()
 
     def test_no_leak_many_graphs():
@@ -239,7 +229,7 @@ if run_memory_usage_tests:
 
             f = function([x], z, mode=Mode(optimizer=None, linker='cvm'))
             if not i % 100:
-                print gc.collect()
+                print(gc.collect())
             sys.stdout.flush()
 
             gc.collect()
@@ -258,30 +248,33 @@ if run_memory_usage_tests:
         def build_graph(x, depth=5):
             z = x
             for d in range(depth):
-                z = ifelse(z > 0, -z, z)
+                z = ifelse(z.mean() > 0.5, -z, z)
             return z
 
         def time_linker(name, linker):
             steps_a = 10
-            x = tensor.vector()
+            x = tensor.dvector()
             a = build_graph(x, steps_a)
 
             f_a = function([x], a,
                            mode=Mode(optimizer=None,
                                      linker=linker()))
-
-            for i in xrange(100000):
-                f_a([2.0])
+            inp = numpy.random.rand(1000000)
+            for i in xrange(100):
+                f_a(inp)
             if 0:  # this doesn't seem to work, prints 0 for everything
                 import resource
                 pre = resource.getrusage(resource.RUSAGE_SELF)
                 post = resource.getrusage(resource.RUSAGE_SELF)
-                print pre.ru_ixrss, post.ru_ixrss
-                print pre.ru_idrss, post.ru_idrss
-                print pre.ru_maxrss, post.ru_maxrss
-
+                print(pre.ru_ixrss, post.ru_ixrss)
+                print(pre.ru_idrss, post.ru_idrss)
+                print(pre.ru_maxrss, post.ru_maxrss)
+        print(1)
         time_linker('vmLinker_C',
                     lambda: vm.VM_Linker(allow_gc=False, use_cloop=True))
+        print(2)
+        time_linker('vmLinker',
+                    lambda: vm.VM_Linker(allow_gc=False, use_cloop=False))
 
     def test_no_leak_many_call_nonlazy():
         # Verify no memory leaks when calling a function a lot of times
@@ -297,18 +290,21 @@ if run_memory_usage_tests:
 
         def time_linker(name, linker):
             steps_a = 10
-            x = tensor.vector()
+            x = tensor.dvector()
             a = build_graph(x, steps_a)
 
             f_a = function([x], a,
                            mode=Mode(optimizer=None,
                                      linker=linker()))
-
-            for i in xrange(500000):
-                f_a([2.0])
-
+            inp = numpy.random.rand(1000000)
+            for i in xrange(500):
+                f_a(inp)
+        print(1)
         time_linker('vmLinker_C',
                     lambda: vm.VM_Linker(allow_gc=False, use_cloop=True))
+        print(2)
+        time_linker('vmLinker',
+                    lambda: vm.VM_Linker(allow_gc=False, use_cloop=False))
 
 
 class RunOnce(theano.Op):
@@ -343,3 +339,36 @@ def test_vm_gc():
     f = theano.function([x], [pp + pp],
                         mode=mode)
     f([1, 2, 3])
+
+
+def test_reallocation():
+    x = tensor.scalar('x')
+    y = tensor.scalar('y')
+    z = tensor.tanh(3 * x + y) + tensor.cosh(x + 5 * y)
+    # The functinality is currently implement for non lazy and non c VM only.
+    for l in [vm.VM_Linker(allow_gc=False, lazy=False, use_cloop=False),
+              vm.VM_Linker(allow_gc=True, lazy=False, use_cloop=False)]:
+        m = theano.compile.get_mode(theano.Mode(linker=l))
+        m = m.excluding('fusion', 'inplace')
+
+        f = theano.function([x, y], z, name="test_reduce_memory",
+                            mode=m)
+        output = f(1, 2)
+        assert output
+        storage_map = f.fn.storage_map
+
+        def check_storage(storage_map):
+            from theano.tensor.var import TensorConstant
+            for i in storage_map.keys():
+                if not isinstance(i, TensorConstant):
+                    keys_copy = storage_map.keys()[:]
+                    keys_copy.remove(i)
+                    for o in keys_copy:
+                        if (storage_map[i][0] and
+                                storage_map[i][0] is storage_map[o][0]):
+                            return [True, storage_map[o][0]]
+            return [False, None]
+
+        assert check_storage(storage_map)[0]
+        assert len(set([id(v) for v in
+                        storage_map.values()])) < len(storage_map)

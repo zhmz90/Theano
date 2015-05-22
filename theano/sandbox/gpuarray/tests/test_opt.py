@@ -3,19 +3,17 @@ import numpy
 import theano
 from theano import tensor
 from theano.tests import unittest_tools as utt
-import theano.sandbox.gpuarray
-from theano.sandbox.gpuarray.type import (
-    GpuArrayType, gpuarray_shared_constructor)
-from theano.sandbox.gpuarray.basic_ops import (
-    GpuAlloc, GpuReshape, gpu_alloc, gpu_from_host, host_from_gpu)
-from theano.sandbox.gpuarray.elemwise import (
-    GpuCAReduceCuda, GpuCAReduceCPY, GpuElemwise)
-from theano.sandbox.gpuarray.subtensor import GpuSubtensor
-from theano.sandbox.gpuarray.tests.test_basic_ops import (
-    rand_gpuarray, mode_with_gpu, mode_without_gpu
-    )
 from theano.tests.unittest_tools import SkipTest
-from theano.tensor.tests.test_basic import TestSpecifyShape
+from theano.tensor.tests import test_basic
+
+import theano.sandbox.gpuarray
+from .. import basic_ops
+from ..type import GpuArrayType, gpuarray_shared_constructor
+from ..basic_ops import (GpuAlloc, GpuReshape, gpu_alloc,
+                         gpu_from_host, host_from_gpu)
+from ..elemwise import GpuCAReduceCuda, GpuCAReduceCPY, GpuElemwise
+from ..subtensor import GpuSubtensor
+from .test_basic_ops import rand_gpuarray, mode_with_gpu, mode_without_gpu
 
 
 def test_local_assert():
@@ -26,6 +24,41 @@ def test_local_assert():
     a_op = [n for n in topo if isinstance(n.op, theano.tensor.opt.Assert)]
     assert len(a_op) == 1
     assert isinstance(a_op[0].inputs[0].type, GpuArrayType)
+
+
+def test_local_remove_all_assert():
+    x = theano.tensor.fmatrix()
+    a = theano.tensor.opt.assert_op(x, theano.tensor.eq(x, 0).any())
+
+    # By default `unsafe` should not be there
+    f = theano.function([x], a, mode=mode_with_gpu)
+    topo = f.maker.fgraph.toposort()
+    a_op = [n for n in topo if isinstance(n.op, theano.tensor.opt.Assert)]
+    assert len(a_op) == 1
+
+    # Put `unsafe`
+    f = theano.function([x], a, mode=mode_with_gpu.including('unsafe'))
+    topo = f.maker.fgraph.toposort()
+    a_op = [n for n in topo if isinstance(n.op, theano.tensor.opt.Assert)]
+    assert len(a_op) == 0
+
+    # Remove `unsafe`
+    f = theano.function([x], a, mode=mode_with_gpu.excluding('unsafe'))
+    topo = f.maker.fgraph.toposort()
+    a_op = [n for n in topo if isinstance(n.op, theano.tensor.opt.Assert)]
+    assert len(a_op) == 1
+
+
+def test_local_gpu_contiguous_gpu_contiguous():
+    a = tensor.fmatrix()
+    o1 = basic_ops.gpu_contiguous(a)
+    o2 = basic_ops.gpu_contiguous(o1)
+    f1 = theano.function([a], o1, mode=mode_with_gpu)
+    f2 = theano.function([a], o2, mode=mode_with_gpu)
+    assert 1 == len([node for node in f1.maker.fgraph.toposort()
+                     if isinstance(node.op, basic_ops.GpuContiguous)])
+    assert 1 == len([node for node in f2.maker.fgraph.toposort()
+                     if isinstance(node.op, basic_ops.GpuContiguous)])
 
 
 def test_flatten():
@@ -135,10 +168,9 @@ def test_rebroadcast():
     assert isinstance(rebr.outputs[0].type, GpuArrayType)
 
 
-class TestSpecifyShape(TestSpecifyShape):
+class TestSpecifyShape(test_basic.TestSpecifyShape):
     mode = mode_with_gpu
     input_type = GpuArrayType
-    pass
 
 
 def test_print_op():
@@ -146,9 +178,6 @@ def test_print_op():
     b = tensor.fmatrix()
     f = theano.function([b], theano.printing.Print()(b) * 2,
                         mode=mode_with_gpu)
-    theano.printing.debugprint(f)
-    #print f.maker.fgraph.toposort()
-#[GpuFromHost(<TensorType(float32, matrix)>), <theano.printing.Print object at 0x3581210>(GpuFromHost.0), GpuElemwise{mul}(CudaNdarray{[[ 2.]]}, <theano.printing.Print object at 0x3581210>.0), HostFromGpu(GpuElemwise{mul}.0)]
     topo = f.maker.fgraph.toposort()
     assert topo[0].op == gpu_from_host
     assert isinstance(topo[1].op, theano.printing.Print)

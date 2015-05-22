@@ -10,34 +10,27 @@ except ImportError:
 from theano import tensor, scalar, gof
 from theano.compile import optdb
 from theano.gof import (local_optimizer, EquilibriumDB,
-                        SequenceDB, ProxyDB,
-                        Optimizer, toolbox,
-                        InconsistencyError, EquilibriumOptimizer)
+                        SequenceDB, Optimizer, toolbox)
 
 from theano.scan_module import scan_utils, scan_op, scan_opt
 
-from theano.compat.python2x import all, any
 from theano.tensor.nnet.conv import ConvOp
-from theano.sandbox.gpuarray.type import GpuArrayType
-from theano.sandbox.gpuarray.basic_ops import (
-    host_from_gpu, gpu_from_host, HostFromGpu, GpuFromHost,
-    GpuSplit,
-    gpu_alloc, GpuAlloc, GpuReshape, GpuEye, gpu_join, GpuJoin,
-)
-from theano.sandbox.gpuarray.blas import gpu_dot22, GpuGemv, GpuGemm, GpuGer
-from theano.sandbox.gpuarray.conv import GpuConv
-from theano.sandbox.gpuarray.nnet import (
-    GpuCrossentropySoftmaxArgmax1HotWithBias,
-    GpuCrossentropySoftmax1HotWithBiasDx,
-    GpuSoftmaxWithBias, GpuSoftmax
-)
-from theano.sandbox.gpuarray.elemwise import (GpuElemwise, _is_scalar,
-                                              GpuDimShuffle, GpuCAReduceCuda,
-                                              GpuCAReduceCPY)
-from theano.sandbox.gpuarray.subtensor import (GpuIncSubtensor, GpuSubtensor,
-                                               GpuAdvancedIncSubtensor1,
-                                               GpuAdvancedIncSubtensor1_dev20)
-from theano.sandbox.gpuarray.type import GpuArrayConstant
+from .type import GpuArrayType, GpuArrayConstant
+from .basic_ops import (host_from_gpu, gpu_from_host,
+                        HostFromGpu, GpuFromHost,
+                        GpuSplit, GpuContiguous,
+                        gpu_alloc, GpuAlloc, GpuReshape,
+                        GpuEye, gpu_join, GpuJoin)
+from .blas import gpu_dot22, GpuGemv, GpuGemm, GpuGer
+from .conv import GpuConv
+from .nnet import (GpuCrossentropySoftmaxArgmax1HotWithBias,
+                   GpuCrossentropySoftmax1HotWithBiasDx,
+                   GpuSoftmaxWithBias, GpuSoftmax)
+from .elemwise import (GpuElemwise, GpuDimShuffle, GpuCAReduceCuda,
+                       GpuCAReduceCPY)
+from .subtensor import (GpuIncSubtensor, GpuSubtensor,
+                        GpuAdvancedIncSubtensor1,
+                        GpuAdvancedIncSubtensor1_dev20)
 
 gpu_optimizer = EquilibriumDB()
 gpu_cut_copies = EquilibriumDB()
@@ -63,6 +56,10 @@ def register_opt(*tags, **kwargs):
     return f
 
 register_opt('fast_compile')(theano.tensor.opt.local_track_shape_i)
+
+gpu_optimizer.register('local_remove_all_assert',
+                       theano.tensor.opt.local_remove_all_assert,
+                       'unsafe')
 
 
 def safe_to_gpu(x):
@@ -134,7 +131,7 @@ class InputToGpuOptimizer(Optimizer):
                 new_input = host_from_gpu(gpu_from_host(input))
                 fgraph.replace_validate(input, new_input,
                                         "InputToGpuOptimizer")
-            except TypeError, e:
+            except TypeError:
                 # This could fail if the inputs are not TensorTypes
                 pass
 
@@ -199,10 +196,23 @@ def local_gpualloc_memset_0(node):
     if isinstance(node.op, GpuAlloc) and not node.op.memset_0:
         inp = node.inputs[0]
         if (isinstance(inp, GpuArrayConstant) and
-            inp.data.size == 1 and
-            (numpy.asarray(inp.data) == 0).all()):
+                inp.data.size == 1 and
+                (numpy.asarray(inp.data) == 0).all()):
             new_out = GpuAlloc(memset_0=True)(*node.inputs)
             return [new_out]
+
+
+@register_opt()
+@local_optimizer([GpuContiguous])
+def local_gpu_contiguous_gpu_contiguous(node):
+    """
+    gpu_contiguous(gpu_contiguous(x)) -> gpu_contiguous(x)
+
+    """
+    if isinstance(node.op, GpuContiguous):
+        inp = node.inputs[0]
+        if inp.owner and isinstance(inp.owner.op, GpuContiguous):
+            return [inp]
 
 
 @register_opt('fast_compile')
@@ -240,10 +250,11 @@ def local_gpuflatten(node):
 @op_lifter([tensor.Elemwise])
 def local_gpu_elemwise(node):
     op = node.op
+    scal_op = op.scalar_op
     name = op.name
     if name:
         name = 'Gpu'+name
-    res = GpuElemwise(op.scalar_op, name=name,
+    res = GpuElemwise(scal_op, name=name,
                       inplace_pattern=copy.copy(op.inplace_pattern),
                       nfunc_spec=op.nfunc_spec)
     return res
@@ -330,7 +341,7 @@ def local_gpua_join(node):
 def local_gpuajoin_1(node):
     # join of a single element
     if (isinstance(node.op, GpuJoin) and
-        len(node.inputs) == 2):
+            len(node.inputs) == 2):
         return [node.inputs[1]]
 
 
@@ -347,13 +358,13 @@ def local_gpua_subtensor(node):
     if (x.owner and isinstance(x.owner.op, HostFromGpu)):
         gpu_x = x.owner.inputs[0]
         if (gpu_x.owner and
-            isinstance(gpu_x.owner.op, GpuFromHost) and
-            # And it is a shared var or an input of the graph.
-            not gpu_x.owner.inputs[0].owner):
+                isinstance(gpu_x.owner.op, GpuFromHost) and
+                # And it is a shared var or an input of the graph.
+                not gpu_x.owner.inputs[0].owner):
             if len(x.clients) == 1:
                 if any([n == 'output' or any([isinstance(v.type, GpuArrayType)
                                               for v in n.inputs + n.outputs])
-                        for n,_  in node.outputs[0].clients]):
+                        for n, _ in node.outputs[0].clients]):
                     return
                 else:
                     return [host_from_gpu(gpu_from_host(node.outputs[0]))]
@@ -378,7 +389,6 @@ def local_gpua_advanced_incsubtensor(node):
         return None
 
     x, y = node.inputs[0:2]
-    coords = node.inputs[2:]
     set_instead_of_inc = node.op.set_instead_of_inc
     active_device_no = theano.sandbox.cuda.active_device_number()
     device_properties = theano.sandbox.cuda.device_properties
@@ -416,7 +426,7 @@ def local_gpua_careduce(node):
         # We need to have the make node called, otherwise the mask can
         # be None
         if (op is GpuCAReduceCPY or
-            gvar.owner.op.supports_c_code([gpu_from_host(x)])):
+                gvar.owner.op.supports_c_code([gpu_from_host(x)])):
             return greduce
         else:
             # Try to make a simpler pattern based on reshaping
@@ -530,8 +540,10 @@ def local_gpua_softmaxwithbias(node):
 @register_opt('fast_compile')
 @op_lifter([theano.tensor.opt.Assert])
 def local_assert(node):
-    return [host_from_gpu(node.op(node.inputs[0].owner.inputs[0],
-                                  *node.inputs[1:]))]
+    if (node.inputs[0].owner and
+            isinstance(node.inputs[0].owner.op, HostFromGpu)):
+        return [host_from_gpu(node.op(node.inputs[0].owner.inputs[0],
+                                      *node.inputs[1:]))]
 
 
 @register_opt('fast_compile')
@@ -558,7 +570,7 @@ def local_gpu_conv(node):
                       version=op.version,
                       verbose=op.verbose,
                       imshp=op.imshp,
-        )
+                      )
         if op.imshp_logical is not None:
             logical_img_hw = op.imshp_logical[1:3]
             if logical_img_hw != op.imshp[1:3]:
@@ -618,15 +630,14 @@ def local_gpu_conv(node):
 def local_gpu_elemwise_careduce(node):
     """ Merge some GpuCAReduceCuda and GPUElemwise"""
     if (isinstance(node.op, GpuCAReduceCuda) and
-        node.op.pre_scalar_op is None and
-        node.inputs[0].owner and
-        isinstance(node.inputs[0].owner.op, GpuElemwise) and
-        # The Op support all scalar with 1 inputs.  We don't
-        # automatically add more case, as some like trigonometic
-        # operation with some reduction pattern will probably result
-        # to slow down.
-        isinstance(node.inputs[0].owner.op.scalar_op, scalar.basic.Sqr)
-        ):
+            node.op.pre_scalar_op is None and
+            node.inputs[0].owner and
+            isinstance(node.inputs[0].owner.op, GpuElemwise) and
+            # The Op support all scalar with 1 inputs.  We don't
+            # automatically add more case, as some like trigonometic
+            # operation with some reduction pattern will probably result
+            # to slow down.
+            isinstance(node.inputs[0].owner.op.scalar_op, scalar.basic.Sqr)):
         op = node.op
         inp = node.inputs[0].owner.inputs[0]
         return [GpuCAReduceCuda(scalar_op=op.scalar_op,
@@ -702,7 +713,14 @@ def local_scan_to_gpua(node):
     nw_ins += node.inputs[b:e]
     nw_ins += [safe_to_gpu(x) for x in node.inputs[e:]]
     scan_ins = [tensor_to_gpu(x) for x in node.op.inputs]
-    scan_outs = [safe_to_gpu(x) for x in node.op.outputs]
+
+    # The inner output corresponding to the looping condition should not be
+    # moved to the gpu
+    if node.op.info['as_while']:
+        scan_outs = [safe_to_gpu(x) for x in node.op.outputs[:-1]]
+        scan_outs += [node.op.outputs[-1]]
+    else:
+        scan_outs = [safe_to_gpu(x) for x in node.op.outputs]
     scan_outs = scan_utils.clone(
         scan_outs,
         replace=zip(node.op.inputs,
@@ -712,17 +730,19 @@ def local_scan_to_gpua(node):
     # __init__ does not know about the gpu and can not
     # handle graphs with inputs being on the gpu
     tmp_in, tmp_out = gpu_reconstruct_graph(scan_ins, scan_outs)
-    local_fgraph = gof.FunctionGraph(tmp_in, tmp_out, clone=False)
+    local_fgraph = gof.FunctionGraph(tmp_in, tmp_out, clone=True)
     _cmodule_key = gof.CLinker().cmodule_key_(local_fgraph, [])
     info['gpu_hash'] = hash(_cmodule_key)
 
-    nw_op = scan_op.Scan(scan_ins, scan_outs, info).make_node(*nw_ins)
+    nw_op = scan_op.Scan(scan_ins, scan_outs, info,
+                         typeConstructor=GpuArrayType).make_node(*nw_ins)
     return nw_op.outputs
 
 optdb.register('gpua_scanOp_make_inplace',
-               scan_opt.ScanInplaceOptimizer(gpua_flag=True),
+               scan_opt.ScanInplaceOptimizer(typeConstructor=GpuArrayType,
+                                             gpua_flag=True),
                75,
-               'gpua',
+               'gpuarray',
                'fast_run',
                'inplace',
                'scan')

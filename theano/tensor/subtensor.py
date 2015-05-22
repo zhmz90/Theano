@@ -13,7 +13,7 @@ import theano
 from theano.gradient import DisconnectedType
 from theano import gof
 from theano.gof import Apply, Constant, hashtype, Op, Type, MethodNotDefined
-from theano.compat.python2x import maxsize
+from theano.compat import maxsize
 from theano.printing import pprint
 from theano import scalar as scal
 from theano.tensor.basic import alloc
@@ -291,6 +291,7 @@ class Subtensor(Op):
     debug = 0
     check_input = False
     view_map = {0: [0]}
+    _f16_ok = True
 
     @staticmethod
     def collapse(idxs, cond):
@@ -328,7 +329,7 @@ class Subtensor(Op):
         TODO: WRITEME: This method also accepts "entry" already being a Type;
             when would that happen?
         """
-        invalid_scal_types = [scal.float64, scal.float32]
+        invalid_scal_types = [scal.float64, scal.float32, scal.float16]
         scal_types = [scal.int64, scal.int32, scal.int16, scal.int8]
         tensor_types = [theano.tensor.lscalar, theano.tensor.iscalar,
                         theano.tensor.wscalar, theano.tensor.bscalar]
@@ -1556,6 +1557,7 @@ class IncSubtensor(Op):
 
         return [gx, gy] + [DisconnectedType()()] * len(idx_list)
 
+
 def _sum_grad_over_bcasted_dims(x, gx):
     """Sum of gx over dimensions to reproduce x.broadcastable.
 
@@ -1599,22 +1601,13 @@ def _sum_grad_over_bcasted_dims(x, gx):
 
 class AdvancedSubtensor1(Op):
     """Implement x[ilist] where ilist is a vector of integers."""
+    # sparse_grad doesn't go in here since it only affects the output
+    # of the grad() method.
+    __props__ = ()
+    _f16_ok = True
 
     def __init__(self, sparse_grad=False):
         self.sparse_grad = sparse_grad
-
-    def __hash__(self):
-        return hash(type(self))
-
-    def __eq__(self, other):
-        # Don't check the sparse_grad attribute as
-        # This don't change the output of this op
-        # So we want the merge optimier to merge two op
-        # that differ from there sparse_grad attribute.
-        return type(self) == type(other)
-
-    def __str__(self):
-        return self.__class__.__name__
 
     def make_node(self, x, ilist):
         x_ = theano.tensor.as_tensor_variable(x)
@@ -1793,19 +1786,18 @@ advanced_subtensor1 = AdvancedSubtensor1()
 
 class AdvancedIncSubtensor1(Op):
     """Increments a subtensor using advanced slicing (list of index)"""
+    __props__ = ('inplace', 'set_instead_of_inc')
+
     def __init__(self, inplace=False, set_instead_of_inc=False):
         self.inplace = inplace
         self.set_instead_of_inc = set_instead_of_inc
         if inplace:
             self.destroy_map = {0: [0]}
 
-    def __hash__(self):
-        return hash((type(self), self.inplace, self.set_instead_of_inc))
-
-    def __eq__(self, other):
-        return (type(self) == type(other)
-                and self.inplace == other.inplace
-                and self.set_instead_of_inc == other.set_instead_of_inc)
+    def clone_inplace(self):
+        return self.__class__(
+            inplace=True,
+            set_instead_of_inc=self.set_instead_of_inc)
 
     def __str__(self):
         if self.inplace:
@@ -1933,12 +1925,15 @@ class AdvancedIncSubtensor1(Op):
         if y.ndim == x.ndim:
             if len(y) == 1:
                 # Allow broadcasting of y[0]
+                y_0 = y[0]
                 for i in idx:
-                    x[i] += y[0]
+                    x[i] += y_0
             else:
                 assert len(y) == len(idx)
-                for (j, i) in enumerate(idx):
+                j = 0
+                for i in idx:
                     x[i] += y[j]
+                    j += 1
         else:
             for i in idx:
                 x[i] += y

@@ -1,20 +1,19 @@
 from theano.gof.graph import list_of_nodes
-from theano.compat.python2x import any, defaultdict
-from theano.compat import cmp
+from theano.compat import cmp, defaultdict
 
-## {{{ http://code.activestate.com/recipes/578231/ (r1)
+# {{{ http://code.activestate.com/recipes/578231/ (r1)
 # Copyright (c) Oren Tirosh 2012
 #
-# Permission is hereby granted, free of charge, to any person obtaining a copy of
-# this software and associated documentation files (the "Software"), to deal in
-# the Software without restriction, including without limitation the rights to
-# use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
-# of the Software, and to permit persons to whom the Software is furnished to do
-# so, subject to the following conditions:
-# 
-# The above copyright notice and this permission notice shall be included in all
-# copies or substantial portions of the Software.
-# 
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
 # THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 # IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 # FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -31,13 +30,15 @@ def memodict(f):
             ret = self[key] = f(key)
             return ret
     return memodict().__getitem__
-## end of http://code.activestate.com/recipes/578231/ }}}
+
+# end of http://code.activestate.com/recipes/578231/ }}}
 
 
 def make_depends():
     @memodict
-    def depends((a, b)):
+    def depends(pair):
         """ Returns True if a depends on b """
+        a, b = pair
         return (any(bout in a.inputs for bout in b.outputs)
                 or any(depends((ainp.owner, b)) for ainp in a.inputs
                        if ainp.owner))

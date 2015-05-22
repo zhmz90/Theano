@@ -1,3 +1,4 @@
+from __future__ import print_function
 import distutils
 import logging
 import os
@@ -12,8 +13,8 @@ from theano.gof import local_bitwidth
 from theano.gof.cc import hash_from_file
 from theano.gof.cmodule import (std_libs, std_lib_dirs,
                                 std_include_dirs, dlimport,
+                                Compiler,
                                 get_lib_extension)
-from theano.compat.python2x import any
 from theano.misc.windows import output_subprocess_Popen
 
 _logger = logging.getLogger("theano.sandbox.cuda.nvcc_compiler")
@@ -97,7 +98,7 @@ def is_nvcc_available():
         set_version()
         return True
     except Exception:
-        #try to find nvcc into cuda.root
+        # try to find nvcc into cuda.root
         p = os.path.join(config.cuda.root, 'bin', 'nvcc')
         if os.path.exists(p):
             global nvcc_path
@@ -126,7 +127,20 @@ def add_standard_rpath(rpath):
     rpath_defaults.append(rpath)
 
 
-class NVCC_compiler(object):
+class NVCC_compiler(Compiler):
+    @staticmethod
+    def try_compile_tmp(src_code, tmp_prefix='', flags=(),
+                        try_run=False, output=False):
+        return Compiler._try_compile_tmp(src_code, tmp_prefix, flags,
+                                         try_run, output,
+                                         nvcc_path)
+
+    @staticmethod
+    def try_flags(flag_list, preambule="", body="",
+                  try_run=False, output=False):
+        return Compiler._try_flags(flag_list, preambule, body, try_run, output,
+                                   nvcc_path)
+
     @staticmethod
     def version_str():
         return "nvcc " + nvcc_version
@@ -236,8 +250,8 @@ class NVCC_compiler(object):
             preargs.append('-fPIC')
         cuda_root = config.cuda.root
 
-        #The include dirs gived by the user should have precedence over
-        #the standards ones.
+        # The include dirs gived by the user should have precedence over
+        # the standards ones.
         include_dirs = include_dirs + std_include_dirs()
         if os.path.abspath(os.path.split(__file__)[0]) not in include_dirs:
             include_dirs.append(os.path.abspath(os.path.split(__file__)[0]))
@@ -277,7 +291,7 @@ class NVCC_compiler(object):
         # TODO: Why do these args cause failure on gtx285 that has 1.3
         # compute capability? '--gpu-architecture=compute_13',
         # '--gpu-code=compute_13',
-        #nvcc argument
+        # nvcc argument
         preargs1 = []
         for pa in preargs:
             for pattern in ['-O', '-arch=', '-ccbin=', '-G', '-g', '-I',
@@ -350,7 +364,7 @@ class NVCC_compiler(object):
                 indexof = cmd.index('-u')
                 cmd.pop(indexof)  # Remove -u
                 cmd.pop(indexof)  # Remove argument to -u
-            except ValueError, e:
+            except ValueError as e:
                 done = True
 
         # CUDA Toolkit v4.1 Known Issues:
@@ -361,8 +375,8 @@ class NVCC_compiler(object):
         if sys.platform == 'darwin' and nvcc_version >= '4.1':
             cmd.extend(['-Xlinker', '-pie'])
 
-        #cmd.append("--ptxas-options=-v") #uncomment this to see
-        #register and shared-mem requirements
+        # cmd.append("--ptxas-options=-v") #uncomment this to see
+        # register and shared-mem requirements
         _logger.debug('Running cmd %s', ' '.join(cmd))
         orig_dir = os.getcwd()
         try:
@@ -377,7 +391,7 @@ class NVCC_compiler(object):
             if not eline:
                 continue
             if 'skipping incompatible' in eline:
-                #ld is skipping an incompatible library
+                # ld is skipping an incompatible library
                 continue
             if 'declared but never referenced' in eline:
                 continue
@@ -387,8 +401,8 @@ class NVCC_compiler(object):
 
         if p.returncode:
             for i, l in enumerate(src_code.split('\n')):
-                print >> sys.stderr,  i + 1, l
-            print >> sys.stderr, '==============================='
+                print(i + 1, l, file=sys.stderr)
+            print('===============================', file=sys.stderr)
             # filter the output from the compiler
             for l in nvcc_stderr.split('\n'):
                 if not l:
@@ -402,19 +416,19 @@ class NVCC_compiler(object):
                         continue
                 except Exception:
                     pass
-                print >> sys.stderr, l
-            print nvcc_stdout
-            print cmd
+                print(l, file=sys.stderr)
+            print(nvcc_stdout)
+            print(cmd)
             raise Exception('nvcc return status', p.returncode,
                             'for cmd', ' '.join(cmd))
         elif config.cmodule.compilation_warning and nvcc_stdout:
-            print nvcc_stdout
+            print(nvcc_stdout)
 
         if nvcc_stdout:
             # this doesn't happen to my knowledge
-            print >> sys.stderr, "DEBUG: nvcc STDOUT", nvcc_stdout
+            print("DEBUG: nvcc STDOUT", nvcc_stdout, file=sys.stderr)
 
         if py_module:
-            #touch the __init__ file
+            # touch the __init__ file
             open(os.path.join(location, "__init__.py"), 'w').close()
             return dlimport(lib_filename)

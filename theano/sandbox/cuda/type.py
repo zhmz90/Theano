@@ -1,5 +1,6 @@
 """Provide CudaNdarrayType
 """
+from __future__ import print_function
 import os
 import copy_reg
 import warnings
@@ -156,9 +157,9 @@ class CudaNdarrayType(Type):
     def bound(a):
         high = a.gpudata
         low = a.gpudata
-        #stride is in the number of element.
-        #we must convert that to bytes in case we
-        #will view the element as a different type.
+        # stride is in the number of element.
+        # we must convert that to bytes in case we
+        # will view the element as a different type.
         elem_size = numpy.zeros(0, dtype=a.dtype).dtype.itemsize
 
         for stri, shp in zip(a._strides, a.shape):
@@ -170,8 +171,8 @@ class CudaNdarrayType(Type):
 
     @staticmethod
     def may_share_memory(a, b):
-        #when this is called with a an ndarray and b
-        #a sparce matrix, numpy.may_share_memory fail.
+        # when this is called with a an ndarray and b
+        # a sparce matrix, numpy.may_share_memory fail.
         if a is b:
             return True
         if a.__class__ is b.__class__:
@@ -185,13 +186,13 @@ class CudaNdarrayType(Type):
 
     @staticmethod
     def values_eq(a, b):
-        #TODO: make the comparaison without transfert.
+        # TODO: make the comparaison without transfert.
         return tensor.TensorType.values_eq(numpy.asarray(a), numpy.asarray(b))
 
     @staticmethod
     def values_eq_approx(a, b, allow_remove_inf=False, allow_remove_nan=False,
                          rtol=None, atol=None):
-        #TODO: make the comparaison without transfert.
+        # TODO: make the comparaison without transfert.
         return tensor.TensorType.values_eq_approx(
             numpy.asarray(a),
             numpy.asarray(b),
@@ -206,8 +207,8 @@ class CudaNdarrayType(Type):
 
         This function is used internally as part of C code generation.
         """
-        #TODO: add more type correspondances for e.g. int32, int64, float32,
-        #complex64, etc.
+        # TODO: add more type correspondances for e.g. int32, int64, float32,
+        # complex64, etc.
         try:
             return {'float32': (float, 'npy_float32', 'NPY_FLOAT32'),
                     'float64': (float, 'npy_float64', 'NPY_FLOAT64'),
@@ -296,7 +297,7 @@ class CudaNdarrayType(Type):
         sio = StringIO()
         fail = sub['fail']
         nd = self.ndim
-        print >> sio, """
+        print("""
         assert(py_%(name)s->ob_refcnt >= 2); // There should be at least one ref from the container object,
         // and one ref from the local scope.
 
@@ -305,9 +306,9 @@ class CudaNdarrayType(Type):
             //fprintf(stderr, "c_extract CNDA object w refcnt %%p %%i\\n", py_%(name)s, (py_%(name)s->ob_refcnt));
             %(name)s = (CudaNdarray*)py_%(name)s;
             //std::cerr << "c_extract " << %(name)s << '\\n';
-        """ % locals()
+        """ % locals(), file=sio)
         if(check_input):
-            print >> sio, """
+            print("""
                 if (%(name)s->nd != %(nd)s)
                 {
                     PyErr_Format(PyExc_RuntimeError,
@@ -317,10 +318,10 @@ class CudaNdarrayType(Type):
                     %(fail)s;
                 }
                 //std::cerr << "c_extract " << %(name)s << " nd check passed\\n";
-            """ % locals()
+            """ % locals(), file=sio)
             for i, b in enumerate(self.broadcastable):
                 if b and check_broadcast:
-                    print >> sio, """
+                    print("""
                 if (CudaNdarray_HOST_DIMS(%(name)s)[%(i)s] != 1)
                 {
                     PyErr_Format(PyExc_RuntimeError,
@@ -342,8 +343,8 @@ class CudaNdarrayType(Type):
                     %(fail)s;
                 }
                 //std::cerr << "c_extract " << %(name)s << "bcast check %(i)s passed\\n";
-                    """ % locals()
-            print >> sio, """
+                    """ % locals(), file=sio)
+            print("""
                 assert(%(name)s);
                 Py_INCREF(py_%(name)s);
             }
@@ -362,14 +363,14 @@ class CudaNdarrayType(Type):
                 %(fail)s;
             }
             //std::cerr << "c_extract done " << %(name)s << '\\n';
-            """ % locals()
+            """ % locals(), file=sio)
         else:
-            print >> sio, """
+            print("""
                 assert(%(name)s);
                 Py_INCREF(py_%(name)s);
             }
-            """ % locals()
-        #print sio.getvalue()
+            """ % locals(), file=sio)
+        # print sio.getvalue()
         return sio.getvalue()
 
     def c_extract_out(self, name, sub, check_input=True, check_broadcast=True):
@@ -449,9 +450,9 @@ class CudaNdarrayType(Type):
         return ""
 
     def c_code_cache_version(self):
-        #return ()
-        #no need to put nvcc.fastmath in the tuple as the
-        #c_compile_args is put in the key.
+        # return ()
+        # no need to put nvcc.fastmath in the tuple as the
+        # c_compile_args is put in the key.
         return (3,)  # cublas v2 changes
 
     def c_compiler(self):

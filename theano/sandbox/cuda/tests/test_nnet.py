@@ -1,9 +1,9 @@
+from __future__ import print_function
 from nose.plugins.skip import SkipTest
 import numpy
 import unittest
 
 import theano
-from theano.compat.python2x import any
 import theano.tensor as T
 import theano.tests.unittest_tools as utt
 
@@ -45,11 +45,11 @@ def test_GpuCrossentropySoftmaxArgmax1HotWithBias():
     b = T.fvector('b')
     #W = T.fmatrix('W')
 
-    #we precompute the dot with big shape before to allow the test of
-    #GpuCrossentropySoftmax1HotWithBiasDx to don't fail with the error
+    # we precompute the dot with big shape before to allow the test of
+    # GpuCrossentropySoftmax1HotWithBiasDx to don't fail with the error
     #(the launch timed out and was terminated) on GPU card not
-    #powerful enough. We need the big shape to check for corner
-    #case.
+    # powerful enough. We need the big shape to check for corner
+    # case.
     dot_result = T.fmatrix('dot_result')
 
     # Seed numpy.random with config.unittests.rseed
@@ -74,8 +74,8 @@ def test_GpuCrossentropySoftmaxArgmax1HotWithBias():
     classify_gpu = theano.function(inputs=[y, b, dot_result],
                                    outputs=[loss, y_pred, dW],
                                     mode=mode_with_gpu)
-    #theano.printing.debugprint(classify)
-    #theano.printing.debugprint(classify_gpu)
+    # theano.printing.debugprint(classify)
+    # theano.printing.debugprint(classify_gpu)
 
     assert any([isinstance(node.op,
                            T.nnet.CrossentropySoftmaxArgmax1HotWithBias)
@@ -130,8 +130,8 @@ def test_GpuCrossentropySoftmax1HotWithBiasDx():
 
     cpu_f = theano.function([softmax_output], op, mode=mode_without_gpu)
     gpu_f = theano.function([softmax_output], op, mode=mode_with_gpu)
-    #theano.printing.debugprint(cpu_f)
-    #theano.printing.debugprint(gpu_f)
+    # theano.printing.debugprint(cpu_f)
+    # theano.printing.debugprint(gpu_f)
 
     assert any([isinstance(node.op, T.nnet.CrossentropySoftmax1HotWithBiasDx)
                 for node in cpu_f.maker.fgraph.toposort()])
@@ -149,17 +149,17 @@ def test_GpuCrossentropySoftmax1HotWithBiasDx():
         scaled_err = numpy.minimum(abs_err / atol, rel_err / rtol)
         max_i = scaled_err.argmax()
 
-        print 'max err index:', max_i, max_i / batch_size,
-        print  max_i % batch_size, max_i / n_out, max_i & n_out
-        print 'At that index:'
-        print 'err:', scaled_err.flatten()[max_i]
-        print 'absolute error:', abs_err.flatten()[max_i]
-        print 'relative error:', rel_err.flatten()[max_i]
-        print 'cpu_out:', cpu_out.flatten()[max_i]
-        print 'gpu_out:', gpu_out.flatten()[max_i]
-        print 'softmax_output_value:', softmax_output_value.flatten()[max_i]
-        print 'dnll_value:', dnll_value[max_i / n_out]
-        print 'y_idx_value:', y_idx_value[max_i / n_out]
+        print('max err index:', max_i, max_i / batch_size, end=' ')
+        print(max_i % batch_size, max_i / n_out, max_i & n_out)
+        print('At that index:')
+        print('err:', scaled_err.flatten()[max_i])
+        print('absolute error:', abs_err.flatten()[max_i])
+        print('relative error:', rel_err.flatten()[max_i])
+        print('cpu_out:', cpu_out.flatten()[max_i])
+        print('gpu_out:', gpu_out.flatten()[max_i])
+        print('softmax_output_value:', softmax_output_value.flatten()[max_i])
+        print('dnll_value:', dnll_value[max_i / n_out])
+        print('y_idx_value:', y_idx_value[max_i / n_out])
 
         assert False, "numpy.allclose(cpu_out, gpu_out, rtol=%s, atol=%s)" % (
                 rtol, atol)
@@ -187,14 +187,14 @@ def test_softmax_with_bias():
                       cuda.nnet.GpuSoftmaxWithBias)
 
     def cmp(n, m):
-        #print "test_softmax",n,m
+        # print "test_softmax",n,m
         data = numpy.arange(n * m, dtype='float32').reshape(n, m)
         out = f(data)
         gout = f_gpu(data)
         assert numpy.allclose(out, gout), numpy.absolute(out - gout)
 
     cmp(2, 5)
-    #we need to test n>32*1024 to check that we make the block loop.
+    # we need to test n>32*1024 to check that we make the block loop.
     cmp(2 << 15, 5)
     cmp(4074, 400)
     cmp(0, 10)
@@ -203,7 +203,7 @@ def test_softmax_with_bias():
     cmp(4, 1024)
     cmp(4, 2000)
     cmp(4, 2024)
-    #GTX285 don't have enough shared mem for this case.
+    # GTX285 don't have enough shared mem for this case.
     cmp(4, 4074)
     # The GTX580, 680 and kepler don't have enough shared memory.
     cmp(2, 10000)
@@ -235,7 +235,7 @@ class test_SoftMax(unittest.TestCase):
         f_gpu = theano.function([x_gpu], f_gpu_z_out, mode=gpu_mode)
         check_types(f, f_gpu)
 
-        #we need to test n>32*1024 to check that we make the block loop.
+        # we need to test n>32*1024 to check that we make the block loop.
         cmp(1, 5, f, f_gpu)
         cmp(2, 5, f, f_gpu)
         cmp(10, 5, f, f_gpu)
@@ -261,7 +261,7 @@ class test_SoftMax(unittest.TestCase):
         return f, f_gpu
 
     def _cmp(self, n, m, f, f_gpu):
-        #print "test_softmax",n,m
+        # print "test_softmax",n,m
         data = numpy.arange(n * m, dtype='float32').reshape(n, m)
         out = f(data)
         gout = f_gpu(data)
@@ -354,7 +354,8 @@ class test_SoftMax(unittest.TestCase):
             numpy.product(dims),
             dtype='float32'
         ).reshape(dims)
-        T.verify_grad(f_gpu, [gdata], rng=numpy.random)
+        T.verify_grad(f_gpu, [gdata], rng=numpy.random,
+                      mode=mode_with_gpu)
 
         def check_types(graph, graph_gpu):
             self._check_types(
@@ -416,7 +417,7 @@ class test_SoftMax(unittest.TestCase):
         # Verify that the SoftmaxGrad -> GpuDnnSoftmaxGrad optimization is not
         # applied when cudnn is excluded or not available
         mode_wo_cudnn = mode_with_gpu.excluding("cudnn")
-        y = T.vector('y')
+        y = T.fvector('y')
         f = theano.function(
             [y],
             T.grad(T.nnet.softmax(y).mean(), y),
@@ -435,3 +436,22 @@ class test_SoftMax(unittest.TestCase):
                         i.op,
                         theano.tensor.nnet.SoftmaxGrad
                     )]) == 1)
+
+        # Verify that the SoftmaxGrad -> GpuDnnSoftmaxGrad do not
+        # crash with manual graph
+        y = T.fvector('y')
+        o = theano.tensor.nnet.SoftmaxGrad()(y, y*2)
+        f = theano.function([y], o, mode=mode_with_gpu)
+        sorted_f = f.maker.fgraph.toposort()
+        assert(len([i
+                    for i in sorted_f
+                    if isinstance(
+                        i.op,
+                        theano.sandbox.cuda.dnn.GpuDnnSoftmaxGrad
+                    )]) == 1)
+        assert(len([i
+                    for i in sorted_f
+                    if isinstance(
+                        i.op,
+                        theano.tensor.nnet.SoftmaxGrad
+                    )]) == 0)

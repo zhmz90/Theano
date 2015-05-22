@@ -1,3 +1,4 @@
+from __future__ import print_function
 import sys
 from copy import copy
 from itertools import izip
@@ -10,7 +11,6 @@ from theano.gof import Apply, Op, OpenMPOp
 from theano import scalar
 from theano.scalar import Scalar, get_scalar_type
 from theano.printing import pprint
-from theano.compat.python2x import all, any
 from theano.tensor.utils import hash_from_dict
 from theano.gradient import DisconnectedType
 from theano.gof.null_type import NullType
@@ -95,6 +95,7 @@ class DimShuffle(Op):
     transpose function.
     Adding, subtracting dimensions can be done with reshape.
     """
+    _f16_ok = True
 
     check_input = False
 
@@ -194,7 +195,7 @@ class DimShuffle(Op):
                         "The broadcastable pattern of the "
                         "input is incorrect for this op. Expected %s, got %s."
                         % (self.input_broadcastable, ib)))
-                #else, expected == b or expected is False and b is True
+                # else, expected == b or expected is False and b is True
                 # Both case are good.
 
         ob = []
@@ -288,7 +289,7 @@ class DimShuffle(Op):
 
         clear_output = ['if (%(res)s) {Py_XDECREF(%(res)s);}']
 
-        #get the copy / view of the input depending on whether we're doingi
+        # get the copy / view of the input depending on whether we're doingi
         # things inplace or not.
         if self.inplace:
             get_base = [
@@ -307,7 +308,7 @@ class DimShuffle(Op):
 
         strides_statements = ['npy_intp strides[%i]' % nd_out]
 
-        #set the strides of the non-broadcasted dimensions
+        # set the strides of the non-broadcasted dimensions
         for i, o in enumerate(self.new_order):
             if o != 'x':
                 strides_statements += [('strides[' + str(i)
@@ -336,18 +337,18 @@ class DimShuffle(Op):
         #                       npy_intp* strides, void* data, int itemsize, int flags, PyObject* obj)
         #
         close_bracket = [
-                #create a new array,
+                # create a new array,
                 ('%(res)s = (PyArrayObject*)PyArray_New(&PyArray_Type, '
                             '' + str(nd_out) + ', dimensions, '
                             'PyArray_TYPE(%(basename)s), strides, '
                             'PyArray_DATA(%(basename)s), PyArray_ITEMSIZE(%(basename)s), '
-                            #borrow only the writable flag from the base
+                            # borrow only the writable flag from the base
                             # the NPY_OWNDATA flag will default to 0.
                             '(NPY_ARRAY_WRITEABLE*PyArray_ISWRITEABLE(%(basename)s)), NULL)'),
                 'if (%(res)s == NULL) %(fail)s;',
-                #recalculate flags: CONTIGUOUS, FORTRAN, ALIGNED
+                # recalculate flags: CONTIGUOUS, FORTRAN, ALIGNED
                 'PyArray_UpdateFlags(%(res)s, NPY_ARRAY_UPDATE_ALL)',
-                #we are making a view in both inplace and non-inplace cases
+                # we are making a view in both inplace and non-inplace cases
 """
 #if NPY_API_VERSION < 0x00000007
 PyArray_BASE(%(res)s) = (PyObject*)%(basename)s;
@@ -365,16 +366,16 @@ PyArray_SetBaseObject(%(res)s, (PyObject*)%(basename)s);
                 + close_bracket)
 
         if 0:
-            print 'C_CODE'
-            print ''
-            print self
-            print "IN BROAD", self.input_broadcastable
-            print "NEW ORDER", self.new_order
-            print "SHUFFLE", self.shuffle
-            print "AUGMENT", self.augment
-            print '------------'
-            print ''
-            print full_code
+            print('C_CODE')
+            print('')
+            print(self)
+            print("IN BROAD", self.input_broadcastable)
+            print("NEW ORDER", self.new_order)
+            print("SHUFFLE", self.shuffle)
+            print("AUGMENT", self.augment)
+            print('------------')
+            print('')
+            print(full_code)
 
             if 0:
                 sys.exit()
@@ -495,9 +496,9 @@ class Elemwise(OpenMPOp):
             self.ufunc = numpy.frompyfunc(scalar_op.impl, scalar_op.nin,
                     scalar_op.nout)
 
-        #precompute the hash of this node
+        # precompute the hash of this node
         self._rehash()
-        super(Elemwise,self).__init__(openmp=openmp)
+        super(Elemwise, self).__init__(openmp=openmp)
 
     def __getstate__(self):
         d = copy(self.__dict__)
@@ -545,7 +546,7 @@ class Elemwise(OpenMPOp):
                     inplace=False)(input))
         inputs = args
 
-        #HERE: all the broadcast dims have the same length now
+        # HERE: all the broadcast dims have the same length now
 
         # cleverness: we iterate over the first, second, third broadcast flag
         # of all inputs in parallel... the all() gives us each output
@@ -557,7 +558,7 @@ class Elemwise(OpenMPOp):
             for bcast in izip(*[input.type.broadcastable
                 for input in inputs])]] * shadow.nout
 
-        #inplace_pattern maps output idx -> input idx
+        # inplace_pattern maps output idx -> input idx
         inplace_pattern = self.inplace_pattern
         if inplace_pattern:
             for overwriter, overwritten in inplace_pattern.items():
@@ -658,7 +659,7 @@ class Elemwise(OpenMPOp):
         if not isinstance(outs, (list, tuple)):
             outs = [outs]
 
-        #compute grad with respect to broadcasted input
+        # compute grad with respect to broadcasted input
         rval = self._bgrad(inputs, ograds)
 
         # TODO: make sure that zeros are clearly identifiable
@@ -687,7 +688,7 @@ class Elemwise(OpenMPOp):
                     new_rval.append(elem)
             return new_rval
 
-        #sum out the broadcasted dimensions
+        # sum out the broadcasted dimensions
         for i, ipt in enumerate(inputs):
             if isinstance(rval[i].type, (NullType, DisconnectedType)):
                 continue
@@ -707,14 +708,14 @@ class Elemwise(OpenMPOp):
                     else:
                         shuffle.append(j)
                         j += 1
-                    #close if
-                #close for
+                    # close if
+                # close for
                 sr = Sum(axis=to_sum)(rval[i])
                 sr = sr.dimshuffle(shuffle)
                 #sr = DimShuffle(sr.type.broadcastable, shuffle)(sr)
                 rval[i] = sr
-            #close if
-        #close for
+            # close if
+        # close for
 
         return rval
 
@@ -871,6 +872,13 @@ class Elemwise(OpenMPOp):
             elif (not isinstance(variable, numpy.ndarray) or
                   variable.dtype != nout.dtype):
                 variable = numpy.asarray(variable, nout.dtype)
+                # The next line is needed for numpy 1.9. Otherwise
+                # there are tests that fail in DebugMode.
+                # Normally we would call theano.misc._asarray, but it
+                # is faster to inline the code. We know that the dtype
+                # are the same string, just different typenum.
+                if numpy.dtype(nout.dtype).num != variable.dtype.num:
+                    variable = variable.view(dtype=nout.dtype)
                 storage[0] = variable
             # numpy.real return a view!
             elif not variable.flags.owndata:
@@ -922,8 +930,8 @@ class Elemwise(OpenMPOp):
         # This is to protect again futur change of uniq.
         assert len(inames) == len(inputs)
         ii, iii = zip(*gof.utils.uniq(zip(_inames, node.inputs)))
-        assert all([x == y for x,y in zip(ii, inames)])
-        assert all([x == y for x,y in zip(iii, inputs)])
+        assert all([x == y for x, y in zip(ii, inames)])
+        assert all([x == y for x, y in zip(iii, inputs)])
 
         defines = ""
         undefs = ""
@@ -1057,7 +1065,7 @@ class Elemwise(OpenMPOp):
             else:
                 all_code = [code]
             if len(all_code) == 1:
-                #No loops
+                # No loops
                 task_decl = "".join([
                     "%s& %s_i = *%s_iter;\n" % (dtype, name, name)
                     for name, dtype in izip(inames + list(real_onames),
@@ -1164,6 +1172,12 @@ class Elemwise(OpenMPOp):
         return decl, checks, alloc, loop
 
     def c_code(self, node, nodename, inames, onames, sub):
+        if (any(i.dtype == 'float16' for i in node.inputs) or
+                any(o.dtype == 'float16' for o in node.outputs) or
+                # This is for Composite
+                getattr(self.scalar_op, 'inner_float16', False)):
+            # Disable C code for float16 vars
+            super(Elemwise, self).c_code(node, nodename, inames, onames, sub)
         code = "\n".join(self._c_all(node, nodename, inames, onames, sub))
         return code
 
@@ -1179,7 +1193,7 @@ class Elemwise(OpenMPOp):
         return support_code
 
     def c_code_cache_version_apply(self, node):
-        version = [11]  # the version corresponding to the c code in this Op
+        version = [12]  # the version corresponding to the c code in this Op
 
         # now we insert versions for the ops on which we depend...
         scalar_node = Apply(self.scalar_op,
@@ -1799,6 +1813,7 @@ class CAReduceDtype(CAReduce):
                     uint8='uint64',
                     uint16='uint64',
                     uint32='uint64',
+                    float16='float32',
                     float32='float64',
                     complex64='complex128',
                     ).get(idtype, idtype)

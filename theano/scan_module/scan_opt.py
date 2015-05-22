@@ -65,7 +65,7 @@ import theano
 from theano import tensor
 from theano.tensor import opt, get_scalar_constant_value
 from theano import gof
-from theano.compat.python2x import maxsize, any, OrderedDict
+from theano.compat import maxsize, OrderedDict
 from theano.gof.opt import Optimizer
 from theano.gof import toolbox, DestroyHandler, InconsistencyError
 from theano.compile import optdb
@@ -426,15 +426,19 @@ class PushOutSeqScan(gof.Optimizer):
                     not nd in to_remove):
                     to_remove.append(nd)
                     outside_ins = []
+                    depends_on_seqs = False
+
                     for x in nd.inputs:
                         if x in inner_non_seqs:
                             _idx = inner_non_seqs.index(x)
                             outside_ins += [outer_non_seqs[_idx]]
                         elif x in inner_seqs:
                             outside_ins += [outer_seqs[inner_seqs.index(x)]]
+                            depends_on_seqs = True
                         elif x in to_replace:
                             outside_ins += [replace_with_out[
                                 to_replace.index(x)]]
+                            depends_on_seqs = True
                         elif isinstance(x, theano.Constant):
                             outside_ins += [x.clone()]
                         else:
@@ -444,6 +448,15 @@ class PushOutSeqScan(gof.Optimizer):
                                  'to move some computation fron scan '
                                  'which is not allowed to move. Report '
                                  'this on theano-users list'), x)
+
+                    if not depends_on_seqs:
+                        # Removing this node from the inner graph of scan
+                        # should be handled by the PushOutNonSeqScan
+                        # optimization. The current optimization only tries
+                        # to pull sequence-dependant computation out of
+                        # scan.
+                        continue
+
                     # Do not call make_node for test_value
                     nw_outer_node = nd.op(*outside_ins,
                                           **dict(return_list=True))[0].owner
@@ -674,7 +687,6 @@ class PushOutScanOutput(gof.Optimizer):
                     idx_matrix_input = 1
                     idx_vector_input = 0
 
-
                 if valid_inputs:
                     # The optimization can be applied on the current Dot
 
@@ -692,7 +704,7 @@ class PushOutScanOutput(gof.Optimizer):
                         outer_dot_inputs = [outer_vector_input,
                                             outer_matrix_input.transpose()]
                         outer_dot_output = theano.tensor.dot(*outer_dot_inputs)
-                    else: # idx_matrix_input == 1
+                    else:  # idx_matrix_input == 1
                         outer_dot_inputs = [outer_vector_input,
                                             outer_matrix_input]
                         outer_dot_output = theano.tensor.dot(*outer_dot_inputs)
@@ -725,7 +737,7 @@ class PushOutScanOutput(gof.Optimizer):
 
                     sitsot_in_idx = nd.inputs.index(args.inner_in_sit_sot[sitsot_idx])
 
-                    dot_in_idx = 1 - sitsot_in_idx # 0 if sitsot_in_idx==1,
+                    dot_in_idx = 1 - sitsot_in_idx  # 0 if sitsot_in_idx==1,
                                                    # 1 if sitsot_in_idx==0
                     dot_input = nd.inputs[dot_in_idx]
 
@@ -748,13 +760,12 @@ class PushOutScanOutput(gof.Optimizer):
                                                                    inner_dot_inputs,
                                                                    node, args)
 
-
                         # Collapse some of the dimensions of the tensors
                         # so that they become matrices. This is because a
                         # dot is usually faster on two large matrices than
                         # a bunch of small ones
                         outer_dot_inputs[0] = theano.tensor.flatten(
-                                       outer_dot_inputs[0].dimshuffle(1,0,2),
+                                       outer_dot_inputs[0].dimshuffle(1, 0, 2),
                                        outdim=2)
 
                         shape_input1 = theano.tensor.shape(outer_dot_inputs[1])
@@ -856,7 +867,7 @@ class PushOutScanOutput(gof.Optimizer):
 
         if len(add_as_nitsots) > 0:
 
-            new_scan_node = self.add_nitsot_outputs(fgraph,old_scan_node,
+            new_scan_node = self.add_nitsot_outputs(fgraph, old_scan_node,
                                                     old_scan_args,
                                                     add_as_nitsots)
 
@@ -914,10 +925,12 @@ class PushOutScanOutput(gof.Optimizer):
 
         return new_scan_node
 
+
 class ScanInplaceOptimizer(Optimizer):
     """Graph optimizer for Scan(makes it run inplace)"""
-    def __init__(self, gpu_flag=False, gpua_flag=False):
+    def __init__(self, typeConstructor=None, gpu_flag=False, gpua_flag=False):
         Optimizer.__init__(self)
+        self.typeConstructor = typeConstructor
         self.gpu_flag = gpu_flag
         self.gpua_flag = gpua_flag
 
@@ -959,7 +972,8 @@ class ScanInplaceOptimizer(Optimizer):
                 inputs = ls_begin + ls + ls_end
                 new_op = scan_op.Scan(op.inputs,
                                       op.outputs,
-                                      info)
+                                      info,
+                                      typeConstructor=self.typeConstructor)
 
                 # Do not call make_node for test_value
                 new_outs = new_op(*inputs, **dict(return_list=True))
@@ -970,7 +984,7 @@ class ScanInplaceOptimizer(Optimizer):
                         reason='scanOp_make_inplace')
                     op = new_op
                     node = new_outs[0].owner
-                except InconsistencyError, e:
+                except InconsistencyError as e:
                     # Failed moving output to be comptued inplace
                     pass
 
@@ -1227,8 +1241,32 @@ class ScanSaveMem(gof.Optimizer):
                     if start == 0 or store_steps[i] == 0:
                         store_steps[i] = 0
                     else:
-                        pval = select_max(nw_steps - start + init_l[i],
-                                          init_l[i])
+                        # The "+ 1" is because of the memory pre-allocation
+                        # mechanism used to in the Scan op to reduce overhead.
+                        # To prevent aliasing between the inputs and outputs
+                        # of recurrent states, it requires that the buffer be
+                        # large enough to that, the new state and the oldest
+                        # tap needed don't occupy the sample place in the
+                        # circular buffer. For now, this only needs to be done
+                        # for mitsots and sitsots (because mitmots are not
+                        # currently supported by the mechanism) and only if
+                        # the pre-allocation mechanism is activated.
+                        prealloc_outs = theano.config.scan.allow_output_prealloc
+
+                        first_mitsot_idx = node.op.n_mit_mot
+                        last_sitsot_idx = (node.op.n_mit_mot +
+                                           node.op.n_mit_sot +
+                                           node.op.n_sit_sot - 1)
+                        preallocable_output = (i >= first_mitsot_idx and
+                                               i <= last_sitsot_idx)
+
+                        if (prealloc_outs and preallocable_output):
+                            pval = select_max(nw_steps - start + init_l[i],
+                                              init_l[i] + 1)
+                        else:
+                            pval = select_max(nw_steps - start + init_l[i],
+                                              init_l[i])
+
                         if store_steps[i] != -1:
                             pval = select_max(pval, store_steps[i])
 
@@ -1236,10 +1274,10 @@ class ScanSaveMem(gof.Optimizer):
                         # FB: This need good testing, left to later.
                         #     call get_scalar_constant_value()? it can
                         # return python/numpy scalar or numpy.ndarray currently.
-                        #pval = pre_greedy_local_optimizer(list_opt_slice,
+                        # pval = pre_greedy_local_optimizer(list_opt_slice,
                         #                                  pval)
                         #pval = pre_constant_merge([pval])[0]
-                        #if (isinstance(pval, theano.tensor.TensorConstant) and
+                        # if (isinstance(pval, theano.tensor.TensorConstant) and
                         #    pval.dtype.startswith('int')):
                         #    try:
                         #        pval = int(pval.data)
@@ -1284,7 +1322,7 @@ class ScanSaveMem(gof.Optimizer):
                         #      can replace the initial tensor by a slice,
                         #   b) it is not, and we simply take a slice of it.
 
-                        #TODO: commit change below with Razvan
+                        # TODO: commit change below with Razvan
                         if (nw_inputs[offset + idx].owner and
                             isinstance(nw_inputs[offset + idx].owner.op,
                                        tensor.IncSubtensor) and
@@ -1335,12 +1373,33 @@ class ScanSaveMem(gof.Optimizer):
             if global_nsteps is not None:
                 for idx, val in enumerate(store_steps[op.n_mit_mot:]):
                     if val == 0:
+                        # val == 0 means that we want to keep all intermediate
+                        # results for that state, including the initial values.
                         if idx < op.n_mit_sot + op.n_sit_sot:
-                            _nw_input = nw_inputs[offset + idx].owner.inputs[1]
-                            nw_input = scan_utils.expand(_nw_input, nw_steps)
-                            nw_inputs[offset + idx] = nw_input
-                        elif idx < (op.n_mit_sot + op.n_sit_sot +
-                                    op.n_nit_sot):
+                            in_idx = offset + idx
+                            # Number of steps in the initial state
+                            initl = init_l[op.n_mit_mot + idx]
+
+                            # If the initial buffer has the form
+                            # inc_subtensor(zeros(...)[...], _nw_input)
+                            # we want to make the zeros tensor as small as
+                            # possible (nw_steps + initl), and call
+                            # inc_subtensor on that instead.
+                            # Otherwise, simply take 0:(nw_steps+initl).
+                            if ((nw_inputs[in_idx].owner and
+                                 isinstance(nw_inputs[in_idx].owner.op,
+                                            tensor.IncSubtensor) and
+                                 isinstance(
+                                     nw_inputs[in_idx].owner.op.idx_list[0],
+                                     slice))):
+                                _nw_input = nw_inputs[in_idx].owner.inputs[1]
+                                nw_input = scan_utils.expand(_nw_input,
+                                                             nw_steps)
+                                nw_inputs[in_idx] = nw_input
+                            else:
+                                nw_input = nw_inputs[in_idx][:(initl+nw_steps)]
+
+                        elif idx < op.n_mit_sot + op.n_sit_sot + op.n_nit_sot:
                             in_idx = offset + idx + op.n_shared_outs
                             if nw_inputs[in_idx] == node.inputs[0]:
                                 nw_inputs[in_idx] = nw_steps
@@ -2085,7 +2144,8 @@ scan_eqopt2 = theano.gof.EquilibriumDB()
 optdb.register('scan_eqopt1', scan_eqopt1, .1, 'fast_run', 'scan')
 optdb.register('scan_eqopt2', scan_eqopt2, 1.6, 'fast_run', 'scan')
 optdb.register('scanOp_make_inplace',
-               ScanInplaceOptimizer(),
+               ScanInplaceOptimizer(typeConstructor=None,
+                                    gpu_flag=False),
                75,
                'fast_run',
                'inplace',

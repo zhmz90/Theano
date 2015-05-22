@@ -1,3 +1,4 @@
+from __future__ import print_function
 import linecache
 import traceback
 import re
@@ -142,9 +143,9 @@ class scratchpad:
         return "scratchpad" + str(self.__dict__)
 
     def info(self):
-        print "<theano.gof.utils.scratchpad instance at %i>" % id(self)
+        print("<theano.gof.utils.scratchpad instance at %i>" % id(self))
         for k, v in self.__dict__.items():
-            print "  %s: %s" % (k, v)
+            print("  %s: %s" % (k, v))
 
 
 class D:
@@ -189,8 +190,8 @@ def deprecated(filename, msg=''):
 
         def g(*args, **kwargs):
             if printme[0]:
-                print 'WARNING: %s.%s deprecated. %s'\
-                        % (filename, f.__name__, msg)
+                print('WARNING: %s.%s deprecated. %s'\
+                        % (filename, f.__name__, msg))
                 printme[0] = False
             return f(*args, **kwargs)
         return g
@@ -204,8 +205,8 @@ def uniq(seq):
     If we just exchange other values, but keep the same pattern of duplication,
     we must keep the same order.
     """
-    #TODO: consider building a set out of seq so that the if condition
-    #is constant time -JB
+    # TODO: consider building a set out of seq so that the if condition
+    # is constant time -JB
     return [x for i, x in enumerate(seq) if seq.index(x) == i]
 
 
@@ -219,7 +220,7 @@ def difference(seq1, seq2):
             raise Exception('not worth it')
         set2 = set(seq2)
         return [x for x in seq1 if x not in set2]
-    except Exception, e:
+    except Exception as e:
         # maybe a seq2 element is not hashable
         # maybe seq2 is too short
         # -> use O(len(seq1) * len(seq2)) algo

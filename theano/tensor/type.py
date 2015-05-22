@@ -6,7 +6,6 @@ import numpy
 import theano
 from theano import config
 from theano.gof import Constant, hashtype, Type, Variable
-from theano.compat.python2x import any
 from theano.gof.utils import MethodNotDefined
 from theano import scalar as scal
 
@@ -39,7 +38,7 @@ class TensorType(Type):
         self.dtype = str(dtype)
         if self.dtype == 'floatX':
             self.dtype = config.floatX
-        ###    broadcastable is immutable, and all elements are either
+        # broadcastable is immutable, and all elements are either
         ###    True or False
         self.broadcastable = tuple(bool(b) for b in broadcastable)
         self.dtype_specs()  # error checking is done there
@@ -221,7 +220,7 @@ class TensorType(Type):
     def value_validity_msg(self, a):
         try:
             self.filter(a, strict=True)
-        except Exception, e:
+        except Exception as e:
             return str(e)
         return "value is valid"
 
@@ -235,6 +234,7 @@ class TensorType(Type):
         # complex64, etc.
         try:
             return {
+                'float16': (float, 'npy_float16', 'NPY_FLOAT16'),
                 'float32': (float, 'npy_float32', 'NPY_FLOAT32'),
                 'float64': (float, 'npy_float64', 'NPY_FLOAT64'),
                 'uint8': (int, 'npy_uint8', 'NPY_UINT8'),
@@ -628,6 +628,10 @@ def values_eq_approx_remove_nan(a, b):
 
 def values_eq_approx_remove_inf_nan(a, b):
     return TensorType.values_eq_approx(a, b, True, True)
+
+
+def values_eq_approx_always_true(a, b):
+    return True
 
 
 # Register TensorType C code for ViewOp.
